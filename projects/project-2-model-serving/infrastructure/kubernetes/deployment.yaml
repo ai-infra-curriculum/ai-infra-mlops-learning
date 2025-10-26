@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-server
+  namespace: model-serving
+  labels:
+    app: model-server
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: model-server
+  template:
+    metadata:
+      labels:
+        app: model-server
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: model-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      # TODO: Add init containers if needed
+      # initContainers:
+      # - name: wait-for-vault
+      #   image: busybox:latest
+      #   command: ['sh', '-c', 'until nc -z vault 8200; do sleep 2; done']
+
+      containers:
+      - name: model-server
+        image: model-server:latest  # TODO: Update with actual image
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        # TODO: Add environment variables from ConfigMap and Secrets
+        # - name: DATABASE_URL
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: model-server-secrets
+        #       key: database-url
+        # - name: REDIS_URL
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: model-server-config
+        #       key: redis-url
+
+        resources:
+          requests:
+            cpu: 2
+            memory: 4Gi
+          limits:
+            cpu: 4
+            memory: 8Gi
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Startup probe (for slow-starting models)
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+
+        # Volume mounts
+        volumeMounts:
+        - name: model-cache
+          mountPath: /tmp/models
+        # TODO: Add vault secrets mount if using Vault agent
+        # - name: vault-secrets
+        #   mountPath: /vault/secrets
+        #   readOnly: true
+
+      # TODO: Add Vault agent sidecar if using Vault
+      # - name: vault-agent
+      #   image: hashicorp/vault:latest
+      #   ...
+
+      volumes:
+      - name: model-cache
+        emptyDir:
+          sizeLimit: 20Gi
+
+      # Pod anti-affinity for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - model-server
+              topologyKey: kubernetes.io/hostname
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 30
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: model-server-pdb
+  namespace: model-serving
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: model-server

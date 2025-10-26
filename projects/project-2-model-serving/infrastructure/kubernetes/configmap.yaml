@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-server-config
+  namespace: model-serving
+data:
+  # Application Configuration
+  environment: "production"
+  log_level: "INFO"
+
+  # API Configuration
+  api_host: "0.0.0.0"
+  api_port: "8000"
+  api_workers: "4"
+
+  # Redis Configuration
+  redis_url: "redis://redis:6379/0"
+  redis_ttl: "3600"
+
+  # Model Configuration
+  max_models_cache: "5"
+  model_cache_ttl: "3600"
+  enable_model_warmup: "true"
+
+  # Monitoring Configuration
+  prometheus_enabled: "true"
+  jaeger_enabled: "true"
+  jaeger_agent_host: "jaeger-agent"
+  jaeger_agent_port: "6831"
+
+  # Feature Flags
+  enable_caching: "true"
+  enable_batch_prediction: "true"
+  enable_model_versioning: "true"
+  enable_drift_detection: "true"
+
+  # Model Storage
+  model_storage_type: "s3"
+  model_storage_bucket: "models"
+  model_storage_endpoint: "http://minio:9000"
+  model_storage_region: "us-east-1"
+
+  # TODO: Add model-specific configurations
+  models.yaml: |
+    models:
+      - name: resnet50
+        version: "1.0"
+        framework: onnx
+        auto_load: true
+      - name: bert-classifier
+        version: "2.0"
+        framework: onnx
+        auto_load: true

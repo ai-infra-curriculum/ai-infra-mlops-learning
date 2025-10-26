@@ -1,0 +1,93 @@
+groups:
+  - name: model_serving_alerts
+    interval: 30s
+    rules:
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1%)"
+
+      # High Latency Alert
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "P95 latency is {{ $value }}s (threshold: 100ms)"
+
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up{job="model-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model server is down"
+          description: "Model server has been down for more than 1 minute"
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          sum(rate(container_cpu_usage_seconds_total{pod=~"model-server.*"}[5m])) by (pod)
+          /
+          sum(container_spec_cpu_quota{pod=~"model-server.*"}/container_spec_cpu_period{pod=~"model-server.*"}) by (pod)
+          > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.pod }}"
+          description: "CPU usage is {{ $value | humanizePercentage }}"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          sum(container_memory_working_set_bytes{pod=~"model-server.*"}) by (pod)
+          /
+          sum(container_spec_memory_limit_bytes{pod=~"model-server.*"}) by (pod)
+          > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.pod }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      # TODO: Add model-specific alerts
+      # - alert: ModelPredictionFailure
+      #   expr: |
+      #     sum(rate(model_predictions_total{status="error"}[5m])) by (model_name)
+      #     /
+      #     sum(rate(model_predictions_total[5m])) by (model_name)
+      #     > 0.05
+      #   for: 5m
+      #   labels:
+      #     severity: warning
+      #   annotations:
+      #     summary: "High failure rate for model {{ $labels.model_name }}"
+      #     description: "Failure rate is {{ $value | humanizePercentage }}"
+
+      # TODO: Add data drift alert
+      # - alert: DataDriftDetected
+      #   expr: data_drift_detected_total > 0
+      #   for: 1m
+      #   labels:
+      #     severity: info
+      #   annotations:
+      #     summary: "Data drift detected for {{ $labels.model_name }}"
+      #     description: "Drift detected in feature {{ $labels.feature }}"

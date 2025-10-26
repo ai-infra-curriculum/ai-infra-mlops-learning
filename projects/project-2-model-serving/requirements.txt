@@ -1,0 +1,73 @@
+# Production Model Serving Platform Dependencies
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Model Serving
+onnxruntime==1.16.3
+# tensorflow==2.15.0  # Optional, uncomment if needed
+# torch==2.1.1  # Optional, uncomment if needed
+
+# Database
+sqlalchemy[asyncio]==2.0.23
+asyncpg==0.29.0
+alembic==1.13.0
+
+# Cache
+redis[hiredis]==5.0.1
+aioredis==2.0.1
+
+# Storage
+boto3==1.34.0
+minio==7.2.0
+
+# Monitoring
+prometheus-client==0.19.0
+opentelemetry-api==1.21.0
+opentelemetry-sdk==1.21.0
+opentelemetry-instrumentation-fastapi==0.42b0
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+hvac==2.1.0
+
+# Validation
+jsonschema==4.20.0
+pydantic-core==2.14.5
+
+# Data Processing
+numpy==1.26.2
+pandas==2.1.4
+scipy==1.11.4
+
+# Utilities
+python-dotenv==1.0.0
+pyyaml==6.0.1
+httpx==0.25.2
+aiofiles==23.2.1
+
+# Logging
+structlog==23.2.0
+python-json-logger==2.0.7
+
+# Testing (optional, for testing)
+# pytest==7.4.3
+# pytest-asyncio==0.21.1
+# pytest-cov==4.1.0
+# httpx==0.25.2
+# pytest-mock==3.12.0
+
+# Load Testing (optional)
+# locust==2.20.0
+
+# Development Tools (optional)
+# black==23.12.1
+# flake8==6.1.0
+# mypy==1.7.1
+# isort==5.13.2
+# pylint==3.0.3
