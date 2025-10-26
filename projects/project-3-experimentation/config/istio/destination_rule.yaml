@@ -1,0 +1,17 @@
+# Example Istio DestinationRule
+# TODO: Customize for your service
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ml-model-service
+  namespace: production
+spec:
+  host: ml-model-service
+  subsets:
+  - name: stable
+    labels:
+      version: v1
+  - name: canary
+    labels:
+      version: v2

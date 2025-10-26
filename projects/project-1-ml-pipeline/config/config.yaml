@@ -1,0 +1,213 @@
+# Main configuration file for ML Pipeline
+
+data:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  staging_data_path: "data/staging"
+
+  # Data validation
+  validation:
+    expectation_suite: "customer_data_suite"
+    validation_threshold: 0.95
+    critical_columns:
+      - customer_id
+      - age
+      - tenure_months
+      - monthly_charges
+      - churned
+
+  # Feature engineering
+  features:
+    numerical_features:
+      - age
+      - tenure_months
+      - monthly_charges
+      - total_charges
+      - num_support_tickets
+      - num_payment_failures
+
+    categorical_features:
+      - gender
+      - contract_type
+      - payment_method
+      - internet_service
+
+    boolean_features:
+      - phone_service
+      - multiple_lines
+      - online_security
+      - online_backup
+      - device_protection
+      - tech_support
+      - streaming_tv
+      - streaming_movies
+
+    target:
+      column: churned
+
+    # Feature engineering config
+    engineering:
+      normalize_numerical: true
+      encoding_method: "onehot"
+      handle_missing: "mean"
+
+# Model training configuration
+training:
+  # Train/val/test split
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+  stratify: true
+
+  # Cross-validation
+  cv_folds: 5
+
+  # Supported model types
+  models:
+    logistic:
+      enabled: true
+      hyperparameters:
+        max_iter: 1000
+        solver: "lbfgs"
+
+    random_forest:
+      enabled: true
+      hyperparameters:
+        n_estimators: 100
+        max_depth: 10
+        random_state: 42
+
+    xgboost:
+      enabled: true
+      hyperparameters:
+        max_depth: 6
+        learning_rate: 0.1
+        n_estimators: 100
+        objective: "binary:logistic"
+
+    lightgbm:
+      enabled: true
+      hyperparameters:
+        num_leaves: 31
+        learning_rate: 0.1
+        n_estimators: 100
+
+  # Hyperparameter optimization
+  optimization:
+    enabled: false
+    n_trials: 100
+    metric: "roc_auc"
+    direction: "maximize"
+
+  # Evaluation metrics
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - roc_auc
+    - average_precision
+
+# MLflow configuration
+mlflow:
+  experiment_name: "churn-prediction"
+  tracking_uri: ${MLFLOW_TRACKING_URI}
+  artifact_location: ${MLFLOW_ARTIFACT_ROOT}
+
+  # Model registry
+  registry:
+    model_name: "churn-predictor"
+    stages:
+      - None
+      - Staging
+      - Production
+      - Archived
+
+# Monitoring configuration
+monitoring:
+  # Data drift detection
+  drift:
+    enabled: true
+    check_interval_hours: 1
+    baseline_days: 30
+
+    # Drift detection thresholds
+    thresholds:
+      ks_test_pvalue: 0.05
+      chi_square_pvalue: 0.05
+      psi_threshold: 0.2
+
+    # Features to monitor
+    monitored_features: all  # or list of specific features
+
+  # Model drift detection
+  model_drift:
+    enabled: true
+    performance_threshold: 0.05  # 5% degradation threshold
+
+  # Alerting
+  alerts:
+    enabled: true
+    channels:
+      - email
+      - slack
+    thresholds:
+      error_rate: 0.05
+      latency_p95_ms: 100
+      drift_score: 0.2
+
+# API configuration
+api:
+  host: ${API_HOST}
+  port: ${API_PORT}
+  workers: ${API_WORKERS}
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+
+  # Model serving
+  model:
+    name: ${MODEL_NAME}
+    version: ${MODEL_VERSION}
+    stage: ${MODEL_STAGE}
+    cache_enabled: true
+
+  # Response configuration
+  prediction:
+    confidence_thresholds:
+      high: 0.8
+      medium: 0.6
+      low: 0.0
+
+# Airflow DAG configuration
+airflow:
+  # Training pipeline DAG
+  training_dag:
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    max_active_runs: 1
+    catchup: false
+
+  # Batch prediction DAG
+  batch_prediction_dag:
+    schedule: "0 * * * *"  # Hourly
+    max_active_runs: 1
+
+  # Monitoring DAG
+  monitoring_dag:
+    schedule: "*/15 * * * *"  # Every 15 minutes
+    max_active_runs: 1
+
+# Logging configuration
+logging:
+  level: ${LOG_LEVEL}
+  format: ${LOG_FORMAT}
+  handlers:
+    - console
+    - file
+
+  file:
+    path: "logs/ml_pipeline.log"
+    max_bytes: 10485760  # 10MB
+    backup_count: 5

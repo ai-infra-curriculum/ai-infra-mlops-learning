@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: experimentation
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.3.0
+    ports:
+      - "5000:5000"
+    environment:
+      - BACKEND_STORE_URI=postgresql://user:password@postgres:5432/experimentation
+      - ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      - postgres
+    command: mlflow server --host 0.0.0.0 --backend-store-uri postgresql://user:password@postgres:5432/experimentation --default-artifact-root /mlflow/artifacts
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:

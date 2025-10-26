@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/airflow.cfg
+airflow/webserver_config.py
+airflow/unittests.cfg
+
+# Great Expectations
+great_expectations/uncommitted/
+great_expectations/expectations/.ge_store_backend_id
+
+# Data
+data/raw/
+data/processed/
+data/staging/
+*.csv
+*.parquet
+*.pkl
+*.joblib
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Docker
+.dockerignore
+
+# Kubernetes
+*.secret.yaml
+
+# Temporary files
+tmp/
+temp/
+*.tmp

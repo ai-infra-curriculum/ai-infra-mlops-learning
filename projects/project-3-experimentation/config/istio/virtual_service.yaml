@@ -1,0 +1,21 @@
+# Example Istio VirtualService for canary deployment
+# TODO: Customize for your service
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ml-model-service
+  namespace: production
+spec:
+  hosts:
+  - ml-model-service
+  http:
+  - route:
+    - destination:
+        host: ml-model-service
+        subset: stable
+      weight: 90
+    - destination:
+        host: ml-model-service
+        subset: canary
+      weight: 10

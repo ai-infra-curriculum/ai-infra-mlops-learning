@@ -1,0 +1,119 @@
+name: Project Help
+description: Get help with one of the 5 major projects
+title: "[PROJECT HELP] "
+labels: ["project-help", "question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help with a project? We're here to assist!
+
+        **Tips for getting help:**
+        - Be specific about where you're stuck
+        - Share what you've tried
+        - Include relevant code and error messages
+        - Describe your expected vs actual results
+
+  - type: dropdown
+    id: project
+    attributes:
+      label: Project
+      description: Which project do you need help with?
+      options:
+        - Project 01 - ML CI/CD Pipeline
+        - Project 02 - Model Monitoring System
+        - Project 03 - Data Validation Framework
+        - Project 04 - Automated Retraining & A/B Testing
+        - Project 05 - Governance & Compliance System
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Project Stage
+      description: What stage are you at?
+      options:
+        - Understanding requirements
+        - Architecture/design
+        - Initial implementation
+        - Testing/debugging
+        - Integration
+        - Deployment
+        - Documentation
+        - Completed (seeking feedback)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you stuck on?
+      description: Describe the specific problem
+      placeholder: What challenge are you facing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: What approaches have you attempted?
+      placeholder: |
+        - Approaches you've tried
+        - Research you've done
+        - Similar examples you've found
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Relevant Code
+      description: Share your current implementation
+      placeholder: Paste relevant code here
+      render: python
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error Messages
+      description: Any error messages or unexpected behavior
+      placeholder: Paste error output or describe unexpected behavior
+      render: shell
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+      placeholder: Describe what you expect to happen
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happens?
+      placeholder: Describe what actually happens
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your setup details
+      placeholder: |
+        - OS:
+        - Python version:
+        - Key dependencies:
+        - Deployment environment (local/cloud):
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have reviewed the project requirements document
+          required: true
+        - label: I have checked the STEP_BY_STEP guide (if available in solutions repo)
+        - label: I have tested my code locally
+        - label: I have searched for similar issues

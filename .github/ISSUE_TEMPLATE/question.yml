@@ -1,0 +1,84 @@
+name: Question
+description: Ask a question about the curriculum or exercises
+title: "[QUESTION] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help!
+
+        **Before asking:**
+        - Check the module README and lecture notes
+        - Search existing issues and discussions
+        - Review the documentation
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      description: Which module is your question about?
+      options:
+        - Module 01 - MLOps Foundations
+        - Module 02 - CI/CD for ML
+        - Module 03 - Model Monitoring
+        - Module 04 - Data Quality
+        - Module 05 - Experimentation & A/B Testing
+        - Module 06 - Automation & Orchestration
+        - Module 07 - ML Governance
+        - Module 08 - Production Operations
+        - Module 09 - MLOps Security
+        - Module 10 - Advanced Topics
+        - Projects
+        - General/Other
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Question Type
+      description: What kind of question is this?
+      options:
+        - Conceptual (understanding a topic)
+        - Technical (how to implement)
+        - Exercise help (stuck on an exercise)
+        - Tool/framework usage
+        - Career/job related
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: Ask your question here
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any relevant context or what you've tried
+      placeholder: |
+        - What you've already tried
+        - What you've read/researched
+        - Your current understanding
+        - Where you're stuck
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code (if applicable)
+      description: Share relevant code snippets
+      placeholder: Paste your code here
+      render: python
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error Message (if applicable)
+      description: Share any error messages
+      placeholder: Paste error output here
+      render: shell

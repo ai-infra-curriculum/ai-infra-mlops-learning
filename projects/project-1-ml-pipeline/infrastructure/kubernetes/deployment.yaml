@@ -1,0 +1,144 @@
+# Kubernetes deployment for API service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: churn-prediction-api
+  labels:
+    app: churn-prediction-api
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: churn-prediction-api
+  template:
+    metadata:
+      labels:
+        app: churn-prediction-api
+        version: v1
+    spec:
+      containers:
+      - name: api
+        image: churn-prediction-api:latest  # TODO: Update with your registry
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            configMapKeyRef:
+              name: ml-pipeline-config
+              key: mlflow_tracking_uri
+        - name: MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: ml-pipeline-config
+              key: model_name
+        - name: MODEL_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: ml-pipeline-config
+              key: model_version
+        - name: POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: ml-pipeline-config
+              key: postgres_host
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: ml-pipeline-secrets
+              key: postgres_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ml-pipeline-secrets
+              key: postgres_password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: ml-pipeline-config
+
+---
+# HorizontalPodAutoscaler for auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: churn-prediction-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: churn-prediction-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-pipeline-config
+data:
+  mlflow_tracking_uri: "http://mlflow-service:5000"
+  model_name: "churn-predictor"
+  model_version: "latest"
+  postgres_host: "postgres-service"
+  postgres_db: "churn_prediction"
+  redis_host: "redis-service"
+
+---
+# Secret for sensitive data (base64 encoded)
+# TODO: Replace with actual base64 encoded values
+# echo -n 'mlops' | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-pipeline-secrets
+type: Opaque
+data:
+  postgres_user: bWxvcHM=  # mlops
+  postgres_password: bWxvcHNfcGFzc3dvcmQ=  # mlops_password
+  # TODO: Add other secrets (API keys, etc.)

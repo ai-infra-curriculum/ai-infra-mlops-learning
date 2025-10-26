@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ml-pipeline-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlops_password}
+      POSTGRES_DB: ${POSTGRES_DB:-churn_prediction}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ml-network
+
+  # MLflow tracking server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.6.0
+    container_name: ml-pipeline-mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops_password}@postgres:5432/${POSTGRES_DB:-churn_prediction}
+      - MLFLOW_ARTIFACT_ROOT=./mlruns
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops_password}@postgres:5432/${POSTGRES_DB:-churn_prediction}
+      --default-artifact-root ./mlruns
+      --host 0.0.0.0
+      --port 5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ml-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: ml-pipeline-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ml-network
+
+  # Airflow webserver
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.train
+    container_name: ml-pipeline-airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops_password}@postgres:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY:-}
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY:-}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./config:/opt/airflow/config
+      - airflow_logs:/opt/airflow/logs
+    command: webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ml-network
+
+  # Airflow scheduler
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.train
+    container_name: ml-pipeline-airflow-scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops_password}@postgres:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY:-}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./config:/opt/airflow/config
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ml-network
+
+  # API service
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.serve
+    container_name: ml-pipeline-api
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+      - MODEL_NAME=${MODEL_NAME:-churn-predictor}
+      - MODEL_VERSION=${MODEL_VERSION:-latest}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+    depends_on:
+      - mlflow
+      - postgres
+      - redis
+    networks:
+      - ml-network
+
+  # Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ml-pipeline-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - ml-network
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ml-pipeline-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - ml-network
+
+volumes:
+  postgres_data:
+  mlflow_data:
+  redis_data:
+  airflow_logs:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  ml-network:
+    driver: bridge
