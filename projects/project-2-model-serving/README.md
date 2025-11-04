@@ -1,5 +1,23 @@
 # Project 2: Production Model Serving Platform
 
+---
+
+## ⚠️ AI-Generated Content Disclaimer
+
+> **Important Notice**: The content in this repository has been generated with AI assistance and is currently undergoing human review and verification. While we strive for accuracy, **the content may contain errors, inaccuracies, or outdated information**. 
+>
+> **Status**: 🔄 Verification in progress
+>
+> Please use this content as a learning resource with appropriate caution. We recommend:
+> - Cross-referencing with official documentation
+> - Testing all code examples in a safe environment
+> - Reporting any errors or inaccuracies via GitHub issues
+>
+> We appreciate your understanding as we work to ensure content quality and accuracy.
+
+---
+
+
 ## Overview
 
 A production-grade multi-model serving platform designed for enterprise ML deployments with strict SLAs, auto-scaling capabilities, comprehensive monitoring, and security best practices.

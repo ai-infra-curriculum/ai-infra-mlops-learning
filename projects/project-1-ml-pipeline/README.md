@@ -1,5 +1,23 @@
 # Project 1: End-to-End ML Pipeline
 
+---
+
+## ⚠️ AI-Generated Content Disclaimer
+
+> **Important Notice**: The content in this repository has been generated with AI assistance and is currently undergoing human review and verification. While we strive for accuracy, **the content may contain errors, inaccuracies, or outdated information**. 
+>
+> **Status**: 🔄 Verification in progress
+>
+> Please use this content as a learning resource with appropriate caution. We recommend:
+> - Cross-referencing with official documentation
+> - Testing all code examples in a safe environment
+> - Reporting any errors or inaccuracies via GitHub issues
+>
+> We appreciate your understanding as we work to ensure content quality and accuracy.
+
+---
+
+
 ## Overview
 
 This project implements a production-ready, end-to-end machine learning pipeline for a customer churn prediction system. The system demonstrates best practices in MLOps, including automated data validation, feature engineering, model training with hyperparameter optimization, model serving, and real-time drift detection.
