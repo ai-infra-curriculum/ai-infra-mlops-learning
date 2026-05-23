@@ -1,0 +1,27 @@
+services:
+  chroma:
+    image: chromadb/chroma:0.5.5
+    ports: ["8001:8000"]
+    volumes: ["chroma:/chroma/chroma"]
+
+  cache:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      LLM_BACKEND_URL: ${LLM_BACKEND_URL:-http://host.docker.internal:8002/v1}
+      CHROMA_URL: http://chroma:8000
+      REDIS_URL: redis://cache:6379/0
+      LLM_RATE_LIMIT_PER_MIN: "60"
+    depends_on: [chroma, cache]
+
+  prom:
+    image: prom/prometheus:v2.54.1
+    ports: ["9090:9090"]
+    volumes: ["./infrastructure/prometheus.yml:/etc/prometheus/prometheus.yml"]
+
+volumes:
+  chroma: {}

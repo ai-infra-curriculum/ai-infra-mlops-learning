@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: governance
+      POSTGRES_PASSWORD: governance
+      POSTGRES_DB: governance
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U governance"]
+      interval: 10s
+
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      DATABASE_URL: postgresql://governance:governance@db:5432/governance
+    depends_on:
+      db: { condition: service_healthy }
+
+  prom:
+    image: prom/prometheus:v2.54.1
+    ports: ["9090:9090"]
+    volumes: ["./infrastructure/prometheus.yml:/etc/prometheus/prometheus.yml"]
+
+volumes:
+  pgdata: {}
