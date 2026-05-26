@@ -431,7 +431,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Email**: ai-infra-curriculum@joshua-ferguson.com
 - **GitHub Org**: [@ai-infra-curriculum](https://github.com/ai-infra-curriculum)
-- **Website**: [Coming Soon]
+- **Discussions**: [GitHub Discussions](https://github.com/ai-infra-curriculum/ai-infra-mlops-learning/discussions) is the supported community surface today.
 
 ## Acknowledgments
 
