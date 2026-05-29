@@ -447,3 +447,9 @@ Special thanks to:
 **Ready to become an MLOps Engineer?** Start with [Lesson 1: MLOps Foundations](lessons/01-mlops-foundations/) and build your path to production ML mastery!
 
 Last Updated: October 2025
+
+
+---
+
+<!-- aicg:maintained-by -->
+Maintained by [VeriSwarm.ai](https://veriswarm.ai)
