@@ -27,7 +27,7 @@
 
 ```bash
 # Navigate to project directory
-cd /path/to/project-2-model-serving
+cd /path/to/project-02-model-serving
 
 # Create virtual environment
 python -m venv venv

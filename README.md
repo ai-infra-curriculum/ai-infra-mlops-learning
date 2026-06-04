@@ -291,7 +291,7 @@ Begin with the foundational lessons before diving into projects:
 
 ```bash
 # Navigate to first lesson
-cd lessons/01-mlops-foundations
+cd lessons/mod-001-mlops-foundations
 
 # Read the lesson plan
 cat README.md
@@ -444,7 +444,7 @@ Special thanks to:
 
 ---
 
-**Ready to become an MLOps Engineer?** Start with [Lesson 1: MLOps Foundations](lessons/01-mlops-foundations/) and build your path to production ML mastery!
+**Ready to become an MLOps Engineer?** Start with [Lesson 1: MLOps Foundations](lessons/mod-001-mlops-foundations/) and build your path to production ML mastery!
 
 Last Updated: October 2025
 

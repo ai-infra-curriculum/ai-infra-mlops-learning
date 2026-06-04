@@ -43,7 +43,7 @@
 
 ```bash
 # Navigate to project directory
-cd /path/to/project-1-ml-pipeline
+cd /path/to/project-01-ml-pipeline
 
 # Create virtual environment
 python -m venv venv

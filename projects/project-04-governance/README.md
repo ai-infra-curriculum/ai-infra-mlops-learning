@@ -228,7 +228,7 @@ project-4-governance/
 
 ```bash
 # 1. Clone and navigate
-cd /path/to/project-4-governance
+cd /path/to/project-04-governance
 
 # 2. Install dependencies
 pip install -r requirements.txt

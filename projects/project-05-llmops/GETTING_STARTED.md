@@ -63,7 +63,7 @@ If `nvidia-smi` works on the host but not in the container, install the NVIDIA C
 ```bash
 cd ~/code
 git clone <your-fork-url> ai-infra-mlops-learning
-cd ai-infra-mlops-learning/projects/project-5-llmops
+cd ai-infra-mlops-learning/projects/project-05-llmops
 
 # Create the venv with the exact Python you want
 pyenv local 3.11.9

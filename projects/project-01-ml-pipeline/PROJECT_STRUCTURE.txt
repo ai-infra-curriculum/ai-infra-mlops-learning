@@ -2,7 +2,7 @@ PROJECT 1: END-TO-END ML PIPELINE - COMPLETE STRUCTURE
 ========================================================
 
 Created: 2025-10-26
-Location: /home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-1-ml-pipeline/
+Location: /home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-01-ml-pipeline/
 
 STATISTICS
 ==========

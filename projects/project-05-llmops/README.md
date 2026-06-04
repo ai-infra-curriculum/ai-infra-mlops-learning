@@ -305,7 +305,7 @@ project-5-llmops/
 
 ```bash
 # Clone and setup
-cd projects/project-5-llmops
+cd projects/project-05-llmops
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

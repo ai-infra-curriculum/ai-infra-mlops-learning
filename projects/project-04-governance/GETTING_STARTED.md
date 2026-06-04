@@ -28,7 +28,7 @@
 cd /path/to/ai-infra-mlops-learning
 
 # Navigate to Project 4
-cd projects/project-4-governance
+cd projects/project-04-governance
 ```
 
 ### Step 2: Create Virtual Environment

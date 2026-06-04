@@ -2,7 +2,7 @@
 
 ## Project Successfully Created!
 
-**Location**: `/home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-2-model-serving/`
+**Location**: `/home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-02-model-serving/`
 
 **Date Created**: January 26, 2025
 
@@ -166,7 +166,7 @@
 ### Development Workflow
 ```bash
 # 1. Navigate to project
-cd /home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-2-model-serving
+cd /home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-02-model-serving
 
 # 2. Set up environment
 make dev-setup

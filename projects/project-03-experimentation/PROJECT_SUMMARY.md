@@ -2,7 +2,7 @@
 
 **Status**: Structure Created - Ready for Implementation
 **Created**: October 26, 2025
-**Location**: `/home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-3-experimentation/`
+**Location**: `/home/claude/ai-infrastructure-project/repositories/learning/ai-infra-mlops-learning/projects/project-03-experimentation/`
 
 ## Overview
 
