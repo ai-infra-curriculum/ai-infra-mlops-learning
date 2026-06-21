@@ -1,5 +1,9 @@
 # MLOps Engineer Learning Repository
 
+<!-- aicg:site-banner -->
+> 🎓 Part of the **[AI Infrastructure Curriculum](https://ai-infra-curriculum.github.io/)** — a free, open-source ladder of role-based AI-infrastructure programs. [Explore the ladder](https://ai-infra-curriculum.github.io/) · [Join the first live cohort](https://ai-infra-curriculum.github.io/junior.html)
+<!-- /aicg:site-banner -->
+
 **AI Infrastructure Career Path - Level 2.5B: MLOps Engineer**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -447,7 +451,6 @@ Special thanks to:
 **Ready to become an MLOps Engineer?** Start with [Lesson 1: MLOps Foundations](lessons/mod-001-mlops-foundations/) and build your path to production ML mastery!
 
 Last Updated: October 2025
-
 
 ---
 
