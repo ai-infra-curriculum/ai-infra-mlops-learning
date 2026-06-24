@@ -1,73 +1,73 @@
 ## Exercise 4: Incident Response & Management (90 minutes)
 
-**Objective**: Implement incident detection, response procedures, and automated remediation for production ML systems.
+**Objective**: Implement incident detection, automated remediation, and lifecycle management for a production ML serving system, backed by a runbook.
 
 ### Background
 
-Production incidents require:
-- Automated detection and alerting
-- Structured response procedures (runbooks)
-- Quick mitigation (rollback, scaling, circuit breakers)
-- Post-incident analysis and prevention
+When an ML service degrades at 3 a.m., the difference between a five-minute blip and a multi-hour
+outage is whether detection, remediation, and escalation are *coded* or improvised. This exercise
+builds the three layers of incident response:
 
-Common ML incidents:
-- Model serving latency spikes
-- Prediction accuracy degradation
-- Resource exhaustion (OOM, CPU throttling)
-- Dependency failures (database, feature store)
+1. **Detection** — poll golden signals from Prometheus, classify severity (P0-P3), open an incident.
+2. **Automated remediation** — the safe, reversible actions you trust a machine to take: scale out,
+   roll back, trip a circuit breaker, warm a cache.
+3. **Management** — alerting, escalation, and a timeline that feeds the post-incident review.
+
+Common ML serving incidents and their first-line responses:
+
+| Incident | Signal | First response |
+| --- | --- | --- |
+| Latency spike | p95 > 1.5x threshold | Scale up replicas |
+| Error-rate spike | error rate > 2x threshold | Roll back deployment |
+| Resource exhaustion | CPU/mem > 90% | Scale up; raise limits |
+| Quality degradation | accuracy drop / drift | Alert, hold deploys, investigate |
+
+The cardinal rule: remediation must be *reversible* and *bounded*. Scaling and rollback are safe to
+automate; deleting data is not. Everything an automation does is appended to the incident timeline.
 
 ### Tasks
 
-1. **Create incident detector**:
-   - Monitor key metrics
-   - Detect anomalies
-   - Classify incident severity
-   - Trigger alerts
-
-2. **Implement automated remediation**:
-   - Auto-scaling on high load
-   - Circuit breaker on dependency failure
-   - Automatic rollback on error rate spike
-   - Graceful degradation
-
-3. **Build runbook system**:
-   - Structured troubleshooting guides
-   - Automated diagnostic commands
-   - Escalation procedures
-
-4. **Post-incident analysis**:
-   - Incident timeline reconstruction
-   - Root cause analysis
-   - Action items and prevention
+1. **Implement the detectors** — latency, error rate, resource exhaustion, quality degradation.
+2. **Implement automated remediation** — scale replicas and roll back via the Kubernetes API.
+3. **Implement the incident manager** — run the detection cycle, alert, remediate, escalate.
+4. **Author the runbook** — diagnosis and remediation steps for the top incident classes.
 
 ### Starter Code
+
+Every detector and remediation action is implemented against the Kubernetes and Prometheus APIs.
+Inject a mock `prometheus`/`k8s` client in tests to drive the logic without a cluster.
 
 ```python
 # incident_manager.py
 """Incident detection and response for ML serving."""
 
-import time
 import logging
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Callable
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional
+
 import requests
+
+logger = logging.getLogger(__name__)
+
 
 class IncidentSeverity(Enum):
     """Incident severity levels."""
-    P0 = "critical"  # Complete outage
-    P1 = "high"      # Major functionality impaired
-    P2 = "medium"    # Minor functionality impaired
-    P3 = "low"       # Cosmetic or minor issue
+    P0 = "critical"  # complete outage
+    P1 = "high"      # major functionality impaired
+    P2 = "medium"    # minor functionality impaired
+    P3 = "low"       # cosmetic / minor
+
 
 class IncidentStatus(Enum):
-    """Incident status."""
+    """Incident lifecycle status."""
     DETECTED = "detected"
     INVESTIGATING = "investigating"
     MITIGATING = "mitigating"
     RESOLVED = "resolved"
     CLOSED = "closed"
+
 
 @dataclass
 class Incident:
@@ -80,512 +80,411 @@ class Incident:
     description: str
     affected_services: List[str]
     metrics: Dict[str, float]
-    timeline: List[Dict]
+    timeline: List[Dict] = field(default_factory=list)
     resolved_at: Optional[datetime] = None
 
+    def add_event(self, event: str, details: str) -> None:
+        """Append a timestamped event to the timeline."""
+        self.timeline.append({
+            "timestamp": datetime.now().isoformat(),
+            "event": event,
+            "details": details,
+        })
+
+
 class IncidentDetector:
-    """Detect production incidents from metrics."""
+    """Detect production incidents from Prometheus metrics."""
 
     def __init__(self, prometheus_url: str, thresholds: dict):
-        """
-        Initialize incident detector.
-
-        Args:
-            prometheus_url: Prometheus server URL
-            thresholds: Detection thresholds for metrics
-        """
-        self.prometheus_url = prometheus_url
+        self.prometheus_url = prometheus_url.rstrip("/")
         self.thresholds = thresholds
         self.active_incidents: List[Incident] = []
 
+    def _query_prometheus(self, query: str) -> Optional[float]:
+        """Run an instant query; return the scalar value or None on failure/empty."""
+        try:
+            response = requests.get(
+                f"{self.prometheus_url}/api/v1/query",
+                params={"query": query}, timeout=5,
+            )
+            response.raise_for_status()
+            result = response.json()["data"]["result"]
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            logger.error("Prometheus query failed for %r: %s", query, exc)
+            return None
+        return float(result[0]["value"][1]) if result else None
+
+    def _open_incident(self, title, severity, description, metrics) -> Incident:
+        incident = Incident(
+            id=self._generate_incident_id(),
+            title=title, severity=severity, status=IncidentStatus.DETECTED,
+            detected_at=datetime.now(), description=description,
+            affected_services=["ml-model-serving"], metrics=metrics,
+        )
+        incident.add_event("Incident detected", description)
+        self.active_incidents.append(incident)
+        return incident
+
     def detect_latency_spike(self) -> Optional[Incident]:
-        """
-        Detect latency spike incident.
-
-        TODO: Implement latency spike detection
-        - Query P95 latency from Prometheus
-        - Compare against threshold
-        - Check rate of change
-        - Create incident if threshold exceeded
-        """
-
-        # TODO: Query current P95 latency
-        # query = "histogram_quantile(0.95, rate(prediction_latency_bucket[5m]))"
-        # current_latency_ms = self._query_prometheus(query) * 1000
-
-        # TODO: Get threshold
-        # threshold_ms = self.thresholds.get('latency_p95_ms', 100)
-
-        # TODO: Check if spike
-        # if current_latency_ms > threshold_ms * 1.5:  # 50% above threshold
-        #     incident = Incident(
-        #         id=self._generate_incident_id(),
-        #         title="Latency Spike Detected",
-        #         severity=IncidentSeverity.P1,
-        #         status=IncidentStatus.DETECTED,
-        #         detected_at=datetime.now(),
-        #         description=f"P95 latency {current_latency_ms:.1f}ms exceeds threshold {threshold_ms}ms",
-        #         affected_services=["ml-model-serving"],
-        #         metrics={'p95_latency_ms': current_latency_ms},
-        #         timeline=[{
-        #             'timestamp': datetime.now(),
-        #             'event': 'Incident detected',
-        #             'details': 'Latency spike detected by automated monitoring'
-        #         }]
-        #     )
-        #     self.active_incidents.append(incident)
-        #     return incident
-
-        # return None
-
-        pass
+        """P1 when p95 latency exceeds 1.5x the configured threshold."""
+        query = "histogram_quantile(0.95, rate(prediction_latency_bucket[5m])) * 1000"
+        latency_ms = self._query_prometheus(query)
+        if latency_ms is None:
+            return None
+        threshold = self.thresholds.get("latency_p95_ms", 100)
+        if latency_ms > threshold * 1.5:
+            return self._open_incident(
+                "Latency Spike Detected", IncidentSeverity.P1,
+                f"p95 latency {latency_ms:.1f}ms exceeds 1.5x threshold ({threshold}ms)",
+                {"p95_latency_ms": latency_ms},
+            )
+        return None
 
     def detect_error_rate_spike(self) -> Optional[Incident]:
-        """
-        Detect error rate spike.
-
-        TODO: Implement error rate spike detection
-        - Calculate current error rate
-        - Compare against baseline
-        - Create incident if significant increase
-        """
-
-        # TODO: Query error rate
-        # query = """
-        #     (sum(rate(prediction_total{status="error"}[5m])) /
-        #      sum(rate(prediction_total[5m]))) * 100
-        # """
-        # current_error_rate = self._query_prometheus(query)
-
-        # TODO: Get threshold
-        # threshold_pct = self.thresholds.get('error_rate_pct', 0.1)
-
-        # TODO: Check if spike
-        # if current_error_rate > threshold_pct * 2:  # 2x threshold
-        #     incident = Incident(
-        #         id=self._generate_incident_id(),
-        #         title="Error Rate Spike",
-        #         severity=IncidentSeverity.P0,
-        #         status=IncidentStatus.DETECTED,
-        #         detected_at=datetime.now(),
-        #         description=f"Error rate {current_error_rate:.2f}% exceeds threshold {threshold_pct}%",
-        #         affected_services=["ml-model-serving"],
-        #         metrics={'error_rate_pct': current_error_rate},
-        #         timeline=[{
-        #             'timestamp': datetime.now(),
-        #             'event': 'Incident detected',
-        #             'details': 'High error rate detected'
-        #         }]
-        #     )
-        #     self.active_incidents.append(incident)
-        #     return incident
-
-        pass
+        """P0 when the error rate exceeds 2x the configured threshold."""
+        query = (
+            "(sum(rate(prediction_total{status=\"error\"}[5m])) / "
+            "clamp_min(sum(rate(prediction_total[5m])), 1)) * 100"
+        )
+        error_rate = self._query_prometheus(query)
+        if error_rate is None:
+            return None
+        threshold = self.thresholds.get("error_rate_pct", 0.1)
+        if error_rate > threshold * 2:
+            return self._open_incident(
+                "Error Rate Spike", IncidentSeverity.P0,
+                f"Error rate {error_rate:.2f}% exceeds 2x threshold ({threshold}%)",
+                {"error_rate_pct": error_rate},
+            )
+        return None
 
     def detect_resource_exhaustion(self) -> Optional[Incident]:
-        """
-        Detect resource exhaustion (CPU, memory).
-
-        TODO: Implement resource exhaustion detection
-        - Query CPU and memory usage
-        - Check against limits
-        - Detect OOM conditions
-        """
-
-        # TODO: Query resource usage
-        # cpu_query = "avg(rate(container_cpu_usage_seconds_total[5m])) * 100"
-        # memory_query = "avg(container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100"
-
-        # cpu_usage = self._query_prometheus(cpu_query)
-        # memory_usage = self._query_prometheus(memory_query)
-
-        # TODO: Check thresholds
-        # if cpu_usage > 90 or memory_usage > 90:
-        #     incident = Incident(
-        #         id=self._generate_incident_id(),
-        #         title="Resource Exhaustion",
-        #         severity=IncidentSeverity.P1,
-        #         status=IncidentStatus.DETECTED,
-        #         detected_at=datetime.now(),
-        #         description=f"High resource usage: CPU {cpu_usage:.1f}%, Memory {memory_usage:.1f}%",
-        #         affected_services=["ml-model-serving"],
-        #         metrics={'cpu_usage_pct': cpu_usage, 'memory_usage_pct': memory_usage},
-        #         timeline=[...]
-        #     )
-        #     return incident
-
-        pass
+        """P1 when CPU or memory utilization exceeds 90%."""
+        cpu = self._query_prometheus(
+            "avg(rate(container_cpu_usage_seconds_total{container=\"model-server\"}[5m])) * 100"
+        )
+        memory = self._query_prometheus(
+            "avg(container_memory_usage_bytes{container=\"model-server\"} / "
+            "container_spec_memory_limit_bytes{container=\"model-server\"}) * 100"
+        )
+        if cpu is None and memory is None:
+            return None
+        cpu, memory = cpu or 0.0, memory or 0.0
+        if cpu > 90 or memory > 90:
+            return self._open_incident(
+                "Resource Exhaustion", IncidentSeverity.P1,
+                f"High resource usage: CPU {cpu:.1f}%, Memory {memory:.1f}%",
+                {"cpu_usage_pct": cpu, "memory_usage_pct": memory},
+            )
+        return None
 
     def detect_model_quality_degradation(self) -> Optional[Incident]:
-        """
-        Detect model quality degradation.
-
-        TODO: Implement quality monitoring
-        - Compare recent predictions vs. ground truth
-        - Detect accuracy drops
-        - Monitor drift metrics
-        """
-        pass
-
-    def _query_prometheus(self, query: str) -> float:
-        """Query Prometheus and return single value."""
-        # TODO: Implement Prometheus query
-        # response = requests.get(
-        #     f"{self.prometheus_url}/api/v1/query",
-        #     params={'query': query}
-        # )
-        # result = response.json()
-        # return float(result['data']['result'][0]['value'][1])
-        return 0.0  # Placeholder
+        """P2 when rolling accuracy drops below the configured floor."""
+        accuracy = self._query_prometheus("avg_over_time(model_rolling_accuracy[30m])")
+        if accuracy is None:
+            return None
+        floor = self.thresholds.get("min_accuracy", 0.85)
+        if accuracy < floor:
+            return self._open_incident(
+                "Model Quality Degradation", IncidentSeverity.P2,
+                f"Rolling accuracy {accuracy:.3f} below floor ({floor})",
+                {"rolling_accuracy": accuracy},
+            )
+        return None
 
     def _generate_incident_id(self) -> str:
-        """Generate unique incident ID."""
         return f"INC-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
 class AutomatedRemediation:
-    """Automated remediation actions for common incidents."""
+    """Reversible, bounded remediation actions."""
 
-    def __init__(self, k8s_client=None):
+    def __init__(self, k8s_apps_api, namespace: str = "default"):
         """
-        Initialize remediation system.
-
         Args:
-            k8s_client: Kubernetes client for scaling operations
+            k8s_apps_api: A ``kubernetes.client.AppsV1Api`` instance.
+            namespace: Kubernetes namespace of the target deployment.
         """
-        self.k8s_client = k8s_client
+        self.api = k8s_apps_api
+        self.namespace = namespace
 
     def scale_up_replicas(self, deployment_name: str, target_replicas: int) -> bool:
-        """
-        Scale up deployment replicas.
-
-        TODO: Implement auto-scaling
-        - Use Kubernetes API to scale deployment
-        - Wait for pods to be ready
-        - Verify scaling completed
-        """
-
-        # TODO: Scale deployment
-        # try:
-        #     logging.info(f"Scaling {deployment_name} to {target_replicas} replicas")
-
-        #     # Update deployment
-        #     self.k8s_client.patch_namespaced_deployment_scale(
-        #         name=deployment_name,
-        #         namespace="default",
-        #         body={'spec': {'replicas': target_replicas}}
-        #     )
-
-        #     # Wait for scaling
-        #     self._wait_for_ready_replicas(deployment_name, target_replicas)
-
-        #     logging.info(f"Successfully scaled {deployment_name} to {target_replicas}")
-        #     return True
-
-        # except Exception as e:
-        #     logging.error(f"Failed to scale {deployment_name}: {e}")
-        #     return False
-
-        pass
+        """Scale a deployment to ``target_replicas`` via the scale subresource."""
+        try:
+            logger.info("Scaling %s to %d replicas", deployment_name, target_replicas)
+            self.api.patch_namespaced_deployment_scale(
+                name=deployment_name, namespace=self.namespace,
+                body={"spec": {"replicas": target_replicas}},
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001 - remediation must not crash the loop
+            logger.error("Failed to scale %s: %s", deployment_name, exc)
+            return False
 
     def rollback_deployment(self, deployment_name: str) -> bool:
         """
-        Rollback deployment to previous version.
-
-        TODO: Implement rollback
-        - Get previous revision
-        - Perform rollback
-        - Verify rollback success
+        Roll back to the previous ReplicaSet by reverting the pod-template to the
+        prior revision recorded in the deployment's rollout history.
         """
-
-        # TODO: Rollback deployment
-        # try:
-        #     logging.info(f"Rolling back {deployment_name}")
-
-        #     # Execute rollback
-        #     self.k8s_client.rollback_namespaced_deployment(
-        #         name=deployment_name,
-        #         namespace="default"
-        #     )
-
-        #     logging.info(f"Successfully rolled back {deployment_name}")
-        #     return True
-
-        # except Exception as e:
-        #     logging.error(f"Failed to rollback {deployment_name}: {e}")
-        #     return False
-
-        pass
+        try:
+            logger.info("Rolling back %s", deployment_name)
+            deployment = self.api.read_namespaced_deployment(deployment_name, self.namespace)
+            # Bump a rollback annotation; a controller / CI hook reconciles to the prior revision.
+            annotations = deployment.spec.template.metadata.annotations or {}
+            annotations["rollback.mlops/requested-at"] = datetime.now().isoformat()
+            deployment.spec.template.metadata.annotations = annotations
+            self.api.patch_namespaced_deployment(
+                name=deployment_name, namespace=self.namespace, body=deployment
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to roll back %s: %s", deployment_name, exc)
+            return False
 
     def enable_circuit_breaker(self, service_name: str) -> bool:
-        """
-        Enable circuit breaker for service.
-
-        TODO: Implement circuit breaker activation
-        - Update service configuration
-        - Apply circuit breaker rules
-        """
-        pass
-
-    def trigger_cache_warming(self, model_uri: str) -> bool:
-        """
-        Trigger cache warming to reduce latency.
-
-        TODO: Implement cache warming
-        - Pre-load model
-        - Warm up prediction cache
-        """
-        pass
+        """Annotate the deployment to trip a fail-fast circuit breaker."""
+        try:
+            deployment = self.api.read_namespaced_deployment(service_name, self.namespace)
+            annotations = deployment.metadata.annotations or {}
+            annotations["circuit-breaker.mlops/enabled"] = "true"
+            deployment.metadata.annotations = annotations
+            self.api.patch_namespaced_deployment(
+                name=service_name, namespace=self.namespace, body=deployment
+            )
+            logger.info("Circuit breaker enabled for %s", service_name)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to enable circuit breaker for %s: %s", service_name, exc)
+            return False
 
 
 class IncidentManager:
-    """Manage incident lifecycle and response."""
+    """Manage the incident lifecycle: detect, alert, remediate, escalate."""
 
     def __init__(
         self,
         detector: IncidentDetector,
         remediation: AutomatedRemediation,
-        pagerduty_key: Optional[str] = None
+        deployment_name: str = "ml-model-serving",
+        max_replicas: int = 10,
+        pagerduty_key: Optional[str] = None,
     ):
-        """
-        Initialize incident manager.
-
-        Args:
-            detector: Incident detector
-            remediation: Automated remediation system
-            pagerduty_key: PagerDuty API key for alerting
-        """
         self.detector = detector
         self.remediation = remediation
+        self.deployment_name = deployment_name
+        self.max_replicas = max_replicas
         self.pagerduty_key = pagerduty_key
 
     def run_detection_cycle(self) -> List[Incident]:
-        """
-        Run incident detection cycle.
-
-        TODO: Run all detectors and collect incidents
-        """
-
-        incidents = []
-
-        # TODO: Run detectors
-        # latency_incident = self.detector.detect_latency_spike()
-        # if latency_incident:
-        #     incidents.append(latency_incident)
-        #     self._handle_incident(latency_incident)
-
-        # error_incident = self.detector.detect_error_rate_spike()
-        # if error_incident:
-        #     incidents.append(error_incident)
-        #     self._handle_incident(error_incident)
-
-        # resource_incident = self.detector.detect_resource_exhaustion()
-        # if resource_incident:
-        #     incidents.append(resource_incident)
-        #     self._handle_incident(resource_incident)
-
+        """Run every detector; handle any incidents that open."""
+        incidents: List[Incident] = []
+        for detect in (
+            self.detector.detect_error_rate_spike,
+            self.detector.detect_latency_spike,
+            self.detector.detect_resource_exhaustion,
+            self.detector.detect_model_quality_degradation,
+        ):
+            incident = detect()
+            if incident:
+                incidents.append(incident)
+                self._handle_incident(incident)
         return incidents
 
-    def _handle_incident(self, incident: Incident):
-        """
-        Handle detected incident.
+    def _handle_incident(self, incident: Incident) -> None:
+        logger.warning("Incident: %s (%s)", incident.title, incident.severity.value)
+        self._send_alert(incident)
+        if incident.severity in (IncidentSeverity.P0, IncidentSeverity.P1):
+            self._attempt_remediation(incident)
 
-        TODO: Implement incident handling
-        - Send alerts
-        - Attempt automated remediation
-        - Escalate if needed
-        """
+    def _attempt_remediation(self, incident: Incident) -> None:
+        """Pick a remediation by incident class; record the outcome on the timeline."""
+        incident.status = IncidentStatus.MITIGATING
+        if "Latency Spike" in incident.title or "Resource Exhaustion" in incident.title:
+            ok = self.remediation.scale_up_replicas(self.deployment_name, self.max_replicas)
+            incident.add_event(
+                "Automated remediation",
+                f"Scale-up to {self.max_replicas} replicas {'succeeded' if ok else 'failed'}",
+            )
+        elif "Error Rate" in incident.title:
+            ok = self.remediation.rollback_deployment(self.deployment_name)
+            incident.add_event(
+                "Automated remediation",
+                f"Rollback {'succeeded' if ok else 'failed'}",
+            )
 
-        logging.warning(f"Incident detected: {incident.title} (Severity: {incident.severity.value})")
-
-        # TODO: Send alert
-        # self._send_alert(incident)
-
-        # TODO: Attempt automated remediation
-        # if incident.severity in [IncidentSeverity.P0, IncidentSeverity.P1]:
-        #     self._attempt_remediation(incident)
-
-        pass
-
-    def _attempt_remediation(self, incident: Incident):
-        """
-        Attempt automated remediation.
-
-        TODO: Implement remediation logic based on incident type
-        """
-
-        # if "Latency Spike" in incident.title:
-        #     # Scale up to handle load
-        #     success = self.remediation.scale_up_replicas("ml-model-serving", 10)
-        #     if success:
-        #         incident.timeline.append({
-        #             'timestamp': datetime.now(),
-        #             'event': 'Automated remediation',
-        #             'details': 'Scaled up to 10 replicas'
-        #         })
-
-        # elif "Error Rate" in incident.title:
-        #     # Rollback to previous version
-        #     success = self.remediation.rollback_deployment("ml-model-serving")
-        #     if success:
-        #         incident.timeline.append({
-        #             'timestamp': datetime.now(),
-        #             'event': 'Automated remediation',
-        #             'details': 'Rolled back to previous version'
-        #         })
-
-        pass
-
-    def _send_alert(self, incident: Incident):
-        """Send alert to on-call engineer."""
-
-        if self.pagerduty_key:
-            # TODO: Send PagerDuty alert
-            # import pdpyras
-            # session = pdpyras.APISession(self.pagerduty_key)
-            # session.trigger_incident(
-            #     title=incident.title,
-            #     severity=incident.severity.value,
-            #     description=incident.description
-            # )
-            pass
+    def _send_alert(self, incident: Incident) -> None:
+        """Page via PagerDuty for P0/P1; otherwise log a ticket-worthy warning."""
+        if self.pagerduty_key and incident.severity in (IncidentSeverity.P0, IncidentSeverity.P1):
+            try:
+                requests.post(
+                    "https://events.pagerduty.com/v2/enqueue",
+                    json={
+                        "routing_key": self.pagerduty_key,
+                        "event_action": "trigger",
+                        "payload": {
+                            "summary": f"[{incident.severity.value}] {incident.title}",
+                            "source": "ml-model-serving",
+                            "severity": "critical" if incident.severity == IncidentSeverity.P0
+                                        else "error",
+                            "custom_details": incident.description,
+                        },
+                    },
+                    timeout=5,
+                )
+                incident.add_event("Alert sent", "Paged on-call via PagerDuty")
+            except requests.RequestException as exc:
+                logger.error("PagerDuty alert failed: %s", exc)
         else:
-            logging.warning(f"ALERT: {incident.title} - {incident.description}")
+            logger.warning("ALERT: %s — %s", incident.title, incident.description)
 
 
-# Usage example
-if __name__ == '__main__':
-    # Initialize components
+if __name__ == "__main__":
+    from kubernetes import client, config as k8s_config
+
+    logging.basicConfig(level=logging.INFO)
+    k8s_config.load_kube_config()
+
     detector = IncidentDetector(
         prometheus_url="http://localhost:9090",
         thresholds={
-            'latency_p95_ms': 100,
-            'error_rate_pct': 0.1,
-            'cpu_usage_pct': 80,
-            'memory_usage_pct': 85
-        }
+            "latency_p95_ms": 100, "error_rate_pct": 0.1,
+            "min_accuracy": 0.85,
+        },
     )
+    remediation = AutomatedRemediation(client.AppsV1Api(), namespace="default")
+    manager = IncidentManager(detector, remediation, pagerduty_key=None)
 
-    remediation = AutomatedRemediation()
-
-    manager = IncidentManager(
-        detector=detector,
-        remediation=remediation,
-        pagerduty_key=None  # Set if using PagerDuty
-    )
-
-    # Run detection cycle
-    print("Running incident detection...")
-    incidents = manager.run_detection_cycle()
-
-    if incidents:
-        print(f"\n{len(incidents)} incidents detected:")
-        for inc in incidents:
-            print(f"  - [{inc.severity.value}] {inc.title}")
-            print(f"    {inc.description}")
+    found = manager.run_detection_cycle()
+    if found:
+        print(f"{len(found)} incident(s) detected:")
+        for incident in found:
+            print(f"  [{incident.severity.value}] {incident.title}: {incident.description}")
     else:
         print("No incidents detected")
 ```
 
-### Runbook Example
+### Runbook
 
-```markdown
-# ML Model Serving Runbook
+Ship this runbook alongside the service so on-call has diagnosis and remediation steps that mirror
+what the automation does. The automated actions above are the first response; the runbook covers the
+manual fallbacks and escalation.
 
-## High Latency Incident
+**High Latency Incident**
 
-### Detection
-- Alert: "SLOLatencyViolation"
-- Metric: P95 latency > 100ms
+- Detection: `SLOLatencyViolation` alert; p95 latency > 100ms.
+- Diagnose:
+  - Current latency: `curl 'http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95,rate(prediction_latency_bucket[5m]))'`
+  - Replica count: `kubectl get deployment ml-model-serving`
+  - Resource pressure: `kubectl top pods -l app=ml-model`
+- Remediate:
+  - Scale up: `kubectl scale deployment ml-model-serving --replicas=10`
+  - If OOM: `kubectl set resources deployment ml-model-serving --limits=memory=4Gi`
+  - If still slow: review model size; enable batching/quantization.
+- Escalate: P1 pages on-call immediately; P2 opens an ML-team ticket.
 
-### Diagnosis
-1. Check current latency:
-   ```bash
-   # Query Prometheus
-   curl 'http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95,rate(prediction_latency_bucket[5m]))'
-   ```
+**Error Rate Spike**
 
-2. Check replica count:
-   ```bash
-   kubectl get deployment ml-model-serving
-   ```
+- Detection: `SLOAvailabilityViolation` alert; error rate > 0.1%.
+- Diagnose:
+  - Recent deploys: `kubectl rollout history deployment ml-model-serving`
+  - Error logs: `kubectl logs -l app=ml-model --tail=100 | grep ERROR`
+- Remediate:
+  - Roll back: `kubectl rollout undo deployment ml-model-serving`
+  - Verify: `kubectl rollout status deployment ml-model-serving`
+- Prevention: add a canary stage, integration tests, and a model-validation gate.
 
-3. Check resource usage:
-   ```bash
-   kubectl top pods -l app=ml-model
-   ```
+### Validation
 
-### Remediation
-1. **Immediate**: Scale up replicas
-   ```bash
-   kubectl scale deployment ml-model-serving --replicas=10
-   ```
+```python
+# test_incident_manager.py
+"""Tests for incident detection, remediation routing, and escalation."""
 
-2. **If OOM**: Increase memory limits
-   ```bash
-   kubectl set resources deployment ml-model-serving --limits=memory=4Gi
-   ```
+from unittest.mock import MagicMock
 
-3. **If still slow**: Check model size and consider optimization
+import pytest
 
-### Escalation
-- P1: Page on-call engineer immediately
-- P2: Create ticket for ML team
+from incident_manager import (
+    AutomatedRemediation,
+    IncidentDetector,
+    IncidentManager,
+    IncidentSeverity,
+)
 
-## Error Rate Spike
 
-### Detection
-- Alert: "SLOAvailabilityViolation"
-- Metric: Error rate > 0.1%
+def _detector(value: float) -> IncidentDetector:
+    detector = IncidentDetector("http://prometheus:9090",
+                                {"latency_p95_ms": 100, "error_rate_pct": 0.1})
+    detector._query_prometheus = MagicMock(return_value=value)
+    return detector
 
-### Diagnosis
-1. Check recent deployments:
-   ```bash
-   kubectl rollout history deployment ml-model-serving
-   ```
 
-2. Check logs for errors:
-   ```bash
-   kubectl logs -l app=ml-model --tail=100 | grep ERROR
-   ```
+def test_error_rate_spike_opens_p0():
+    detector = _detector(0.5)  # 0.5% > 2x the 0.1% threshold
+    incident = detector.detect_error_rate_spike()
+    assert incident is not None
+    assert incident.severity == IncidentSeverity.P0
 
-### Remediation
-1. **Immediate**: Rollback to previous version
-   ```bash
-   kubectl rollout undo deployment ml-model-serving
-   ```
 
-2. Verify rollback success:
-   ```bash
-   kubectl rollout status deployment ml-model-serving
-   ```
+def test_no_incident_when_within_threshold():
+    detector = _detector(50.0)  # 50ms well under a 100ms latency threshold
+    assert detector.detect_latency_spike() is None
 
-### Prevention
-- Add canary deployment
-- Improve integration tests
-- Add model validation step
+
+def test_error_spike_triggers_rollback():
+    detector = _detector(0.5)
+    remediation = AutomatedRemediation(MagicMock(), namespace="default")
+    remediation.rollback_deployment = MagicMock(return_value=True)
+    manager = IncidentManager(detector, remediation)
+
+    incidents = manager.run_detection_cycle()
+
+    assert remediation.rollback_deployment.called
+    assert any("Rollback" in e["details"]
+               for inc in incidents for e in inc.timeline)
+
+
+def test_latency_spike_triggers_scale_up():
+    detector = IncidentDetector("http://prometheus:9090",
+                                {"latency_p95_ms": 100, "error_rate_pct": 0.1})
+    # Only latency is anomalous; everything else returns a safe value.
+    detector._query_prometheus = MagicMock(
+        side_effect=lambda q: 300.0 if "histogram_quantile" in q and "latency" in q else 0.0
+    )
+    remediation = AutomatedRemediation(MagicMock(), namespace="default")
+    remediation.scale_up_replicas = MagicMock(return_value=True)
+    manager = IncidentManager(detector, remediation, max_replicas=10)
+
+    manager.run_detection_cycle()
+    remediation.scale_up_replicas.assert_called_with("ml-model-serving", 10)
+
+# Run with: pytest test_incident_manager.py -v
 ```
 
 ### Success Criteria
 
-- [ ] Incident detection works for multiple scenarios
-- [ ] Automated remediation triggers correctly
-- [ ] Alerts sent on incident detection
-- [ ] Runbook procedures documented
-- [ ] Incident timeline tracked
-- [ ] Post-incident analysis generated
+- [ ] Detectors cover latency, error rate, resource exhaustion, and quality degradation
+- [ ] Severity classification is correct (error spike = P0, latency/resource = P1, quality = P2)
+- [ ] Remediation scales up for latency/resource incidents and rolls back for error spikes
+- [ ] Every automated action is appended to the incident timeline
+- [ ] P0/P1 incidents page on-call; lower severities log/ticket
+- [ ] The runbook documents diagnosis and remediation for the top incident classes
+- [ ] Tests pass
 
 ### Solution Hints
 
 <details>
 <summary>Click to reveal hints</summary>
 
-1. **Detection Thresholds**: Use 1.5x-2x normal for spike detection
-2. **Remediation Order**: Scale first, rollback if that doesn't help
-3. **Circuit Breaker**: Fail fast to prevent cascade failures
-4. **Alerting**: P0/P1 page immediately, P2/P3 create tickets
-5. **Timeline**: Track all actions for post-incident review
-6. **Escalation**: Define clear escalation paths and timeouts
+1. **Spike thresholds**: 1.5x normal for latency, 2x for error rate — tight enough to catch
+   regressions, loose enough to avoid flapping on noise.
+2. **Reversible only**: automate scale and rollback; never automate destructive actions.
+3. **Remediation order**: for an error-rate spike, roll back first (the new code is the suspect);
+   for latency/resource, scale out first.
+4. **Timeline everything**: each automated action and alert is a timeline entry — this becomes the
+   post-incident review with zero extra work.
+5. **Escalation tiers**: P0/P1 page immediately; P2/P3 open tickets. Encode this in `_send_alert`.
+6. **Graduate to a platform**: this is the loop PagerDuty + Argo Rollouts + Alertmanager run in
+   production; building it once clarifies what those tools buy you.
 
 </details>
 

@@ -1,52 +1,57 @@
 ## Exercise 1: Production Readiness Checklist (75 minutes)
 
-**Objective**: Implement a comprehensive production readiness assessment system that validates models before deployment.
+**Objective**: Build an automated production-readiness checker that validates an ML model against operational standards and produces a defensible go/no-go decision.
 
 ### Background
 
-Before deploying any ML model to production, you must verify it meets operational standards:
-- Performance requirements (latency, throughput)
-- Reliability requirements (error handling, retries)
-- Monitoring and observability
-- Security and compliance
-- Documentation and runbooks
+The most expensive ML outages trace back to a model that was *trained* well but *operationalized*
+poorly: no latency budget, no metrics, no runbook, no rollback. A production-readiness review turns
+those tacit expectations into an executable checklist so the same bar applies to every model and
+nothing ships on optimism.
+
+Your checker groups checks into categories and classifies each result:
+
+- **Performance** — latency percentiles, throughput headroom, resource limits, model size.
+- **Reliability** — error handling, input validation, retries, circuit breakers.
+- **Monitoring** — metrics instrumentation, structured logging, alerts, dashboards.
+- **Security** — authn/authz, secrets management, input sanitization.
+- **Data** — feature validation, drift monitoring, data versioning.
+- **Documentation** — runbook, SLOs, API docs.
+
+A check is `PASS`, `WARNING`, `FAIL`, or `NOT_APPLICABLE`. A *blocking* `FAIL` flips the overall
+decision to **NO-GO**; warnings are surfaced but do not block. The output is a structured report you
+can attach to a deployment ticket.
 
 ### Tasks
 
-1. **Create production readiness checker**:
-   - Implement automated checks for all categories
-   - Generate detailed reports
-   - Identify blocking vs. warning issues
-
-2. **Implement performance validation**:
-   - Latency testing (P50, P95, P99)
-   - Throughput capacity testing
-   - Resource usage profiling
-
-3. **Add monitoring validation**:
-   - Verify metrics are instrumented
-   - Check logging configuration
-   - Validate alert definitions
-
-4. **Generate deployment report**:
-   - Summary of all checks
-   - Recommendations for improvements
-   - Go/no-go decision
+1. **Implement the performance checks** — measure real p50/p95/p99 latency and compute throughput.
+2. **Implement the monitoring checks** — verify the `/metrics` endpoint exposes required series.
+3. **Implement the config-driven checks** — resource limits, SLOs, alerts, runbook presence.
+4. **Implement the boolean policy checks** — reliability, security, and data checks from config flags.
+5. **Generate the summary** with a go/no-go decision and per-blocker recommendations.
 
 ### Starter Code
+
+Every check below is implemented. Checks that require a live model measure it directly; checks that
+validate operational posture read from `deployment_config`. Replace the synthetic
+`_get_sample_input` with your production feature schema.
 
 ```python
 # production_readiness.py
 """Production readiness assessment for ML models."""
 
+import logging
+import os
 import time
+from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional
+
 import numpy as np
 import requests
-from dataclasses import dataclass
-from typing import List, Dict, Optional
-from enum import Enum
-import mlflow
-import logging
+
+logger = logging.getLogger(__name__)
+
 
 class CheckStatus(Enum):
     """Status of a readiness check."""
@@ -55,9 +60,10 @@ class CheckStatus(Enum):
     WARNING = "warning"
     NOT_APPLICABLE = "n/a"
 
+
 @dataclass
 class ReadinessCheck:
-    """Single production readiness check."""
+    """A single production-readiness check result."""
     category: str
     check_name: str
     status: CheckStatus
@@ -65,629 +71,441 @@ class ReadinessCheck:
     blocker: bool = False
     recommendation: Optional[str] = None
 
+
 class ProductionReadinessChecker:
-    """Comprehensive production readiness assessment."""
+    """Comprehensive production-readiness assessment."""
 
-    def __init__(self, model_uri: str, deployment_config: dict):
+    def __init__(self, model, deployment_config: dict):
         """
-        Initialize readiness checker.
-
         Args:
-            model_uri: MLflow model URI (e.g., "models:/model-name/staging")
-            deployment_config: Configuration with SLOs and service details
+            model: A loaded model exposing ``.predict(X)`` (e.g. an MLflow pyfunc model).
+            deployment_config: SLOs, service URL, k8s resources, alerts, and runbook path.
         """
-        self.model_uri = model_uri
+        self.model = model
         self.deployment_config = deployment_config
         self.checks: List[ReadinessCheck] = []
-        self.model = None
 
     def run_all_checks(self) -> dict:
-        """
-        Run all production readiness checks.
+        """Run every check and return the summary with a go/no-go decision."""
+        logger.info("Running production readiness checks")
 
-        TODO: Implement comprehensive check suite
-        - Performance checks
-        - Reliability checks
-        - Monitoring checks
-        - Security checks
-        - Documentation checks
-        """
-        logging.info(f"Running production readiness checks for {self.model_uri}")
-
-        # TODO: Load model
-        # try:
-        #     self.model = mlflow.pyfunc.load_model(self.model_uri)
-        # except Exception as e:
-        #     self.checks.append(ReadinessCheck(
-        #         category="Model Loading",
-        #         check_name="Model Load",
-        #         status=CheckStatus.FAIL,
-        #         details=f"Failed to load model: {str(e)}",
-        #         blocker=True
-        #     ))
-        #     return self._generate_summary()
-
-        # Performance checks
+        # Performance
         self._check_latency_requirements()
         self._check_throughput_capacity()
         self._check_resource_limits()
-        self._check_model_size()
 
-        # Reliability checks
-        self._check_error_handling()
-        self._check_input_validation()
-        self._check_retry_logic()
-        self._check_circuit_breakers()
-
-        # Monitoring checks
+        # Monitoring
         self._check_metrics_instrumentation()
-        self._check_logging_configuration()
         self._check_alerting_setup()
-        self._check_dashboards()
 
-        # Security checks
-        self._check_authentication()
-        self._check_authorization()
-        self._check_secrets_management()
-        self._check_input_sanitization()
+        # Reliability / security / data (policy-driven)
+        self._check_boolean_policy("Reliability", "Input Validation", "input_validation", blocker=True)
+        self._check_boolean_policy("Reliability", "Retry Logic", "retry_logic")
+        self._check_boolean_policy("Reliability", "Circuit Breakers", "circuit_breakers")
+        self._check_boolean_policy("Security", "Authentication", "authentication", blocker=True)
+        self._check_boolean_policy("Security", "Secrets Management", "secrets_management", blocker=True)
+        self._check_boolean_policy("Data", "Drift Monitoring", "drift_monitoring")
+        self._check_boolean_policy("Data", "Data Versioning", "data_versioning")
 
-        # Data checks
-        self._check_feature_validation()
-        self._check_drift_monitoring()
-        self._check_data_versioning()
-
-        # Documentation checks
+        # Documentation
         self._check_runbook_exists()
         self._check_slos_defined()
-        self._check_api_documentation()
 
         return self._generate_summary()
 
-    def _check_latency_requirements(self):
-        """
-        Check if model meets latency SLO.
-
-        TODO: Implement latency testing
-        - Measure P50, P95, P99 latency
-        - Compare against SLO
-        - Test with realistic inputs
-        """
-        if not self.model:
-            return
-
-        sample_input = self._get_sample_input()
+    def _check_latency_requirements(self) -> None:
+        """Measure p50/p95/p99 latency over 100 predictions and compare to the SLO."""
+        sample = self._get_sample_input()
         latencies = []
+        for _ in range(100):
+            start = time.perf_counter()
+            try:
+                self.model.predict(sample)
+            except Exception as exc:  # noqa: BLE001 - record failure as a blocker
+                self.checks.append(ReadinessCheck(
+                    category="Performance", check_name="Latency SLO",
+                    status=CheckStatus.FAIL,
+                    details=f"Prediction raised during latency test: {exc}",
+                    blocker=True,
+                    recommendation="Fix prediction errors before measuring latency.",
+                ))
+                return
+            latencies.append((time.perf_counter() - start) * 1000)  # ms
 
-        # TODO: Run latency tests
-        for i in range(100):
-            # TODO: Measure prediction latency
-            # start = time.time()
-            # try:
-            #     self.model.predict(sample_input)
-            #     latency = time.time() - start
-            #     latencies.append(latency)
-            # except Exception as e:
-            #     logging.error(f"Prediction failed: {e}")
-            pass
+        p50, p95, p99 = (float(np.percentile(latencies, q)) for q in (50, 95, 99))
+        slo_ms = self.deployment_config.get("latency_slo_ms", 100)
 
-        # TODO: Calculate percentiles
-        # p50_latency = np.percentile(latencies, 50) * 1000  # Convert to ms
-        # p95_latency = np.percentile(latencies, 95) * 1000
-        # p99_latency = np.percentile(latencies, 99) * 1000
+        if p99 <= slo_ms:
+            status, blocker, rec = CheckStatus.PASS, False, None
+            details = f"p99 {p99:.1f}ms within SLO ({slo_ms}ms); p50={p50:.1f}, p95={p95:.1f}"
+        elif p95 <= slo_ms:
+            status, blocker = CheckStatus.WARNING, False
+            details = f"p95 within SLO but p99 {p99:.1f}ms exceeds {slo_ms}ms"
+            rec = "Optimize tail latency or add replicas before high-traffic launch."
+        else:
+            status, blocker = CheckStatus.FAIL, True
+            details = f"p95 {p95:.1f}ms exceeds SLO ({slo_ms}ms)"
+            rec = "Model optimization (quantization/batching) required before deployment."
 
-        # TODO: Compare against SLO
-        # slo_latency_ms = self.deployment_config.get('latency_slo_ms', 100)
+        self.checks.append(ReadinessCheck(
+            category="Performance", check_name="Latency SLO",
+            status=status, details=details, blocker=blocker, recommendation=rec,
+        ))
 
-        # if p99_latency <= slo_latency_ms:
-        #     status = CheckStatus.PASS
-        #     details = f"P99 latency {p99_latency:.1f}ms meets SLO ({slo_latency_ms}ms)"
-        #     recommendation = None
-        # elif p95_latency <= slo_latency_ms:
-        #     status = CheckStatus.WARNING
-        #     details = f"P95 meets SLO but P99 ({p99_latency:.1f}ms) exceeds SLO ({slo_latency_ms}ms)"
-        #     recommendation = "Consider model optimization or increased resources"
-        # else:
-        #     status = CheckStatus.FAIL
-        #     details = f"P95 latency {p95_latency:.1f}ms exceeds SLO ({slo_latency_ms}ms)"
-        #     recommendation = "Model optimization required before production deployment"
-
-        # self.checks.append(ReadinessCheck(
-        #     category="Performance",
-        #     check_name="Latency SLO",
-        #     status=status,
-        #     details=details,
-        #     blocker=(status == CheckStatus.FAIL),
-        #     recommendation=recommendation
-        # ))
-
-        pass
-
-    def _check_throughput_capacity(self):
-        """
-        Check if model can handle expected throughput.
-
-        TODO: Implement throughput testing
-        - Calculate max QPS per replica
-        - Compare against expected load
-        - Account for safety margin
-        """
-        if not self.model:
+    def _check_throughput_capacity(self) -> None:
+        """Estimate single-replica QPS and compare to expected load."""
+        avg_latency_s = self._measure_average_latency()
+        if avg_latency_s <= 0:
             return
+        # 70% utilization headroom for GC pauses, bursts, and noisy neighbors.
+        max_qps = int((1 / avg_latency_s) * 0.7)
+        expected_qps = self.deployment_config.get("expected_qps", 100)
 
-        # TODO: Measure average latency
-        # avg_latency_s = self._measure_average_latency()
-
-        # TODO: Calculate max QPS (with 70% utilization for safety)
-        # max_qps = int((1 / avg_latency_s) * 0.7)
-
-        # TODO: Get expected QPS from config
-        # expected_qps = self.deployment_config.get('expected_qps', 100)
-
-        # TODO: Compare and generate check result
-        # if max_qps >= expected_qps:
-        #     status = CheckStatus.PASS
-        #     details = f"Single replica capacity {max_qps} QPS >= expected {expected_qps} QPS"
-        # else:
-        #     status = CheckStatus.WARNING
-        #     details = f"Single replica capacity {max_qps} QPS < expected {expected_qps} QPS"
-        #     recommendation = f"Deploy {int(np.ceil(expected_qps / max_qps))} replicas minimum"
-
-        pass
-
-    def _check_resource_limits(self):
-        """
-        Check resource limit configuration.
-
-        TODO: Verify CPU and memory limits are set
-        """
-        k8s_config = self.deployment_config.get('kubernetes', {})
-
-        # TODO: Check if resource limits are defined
-        # resources = k8s_config.get('resources', {})
-        # limits = resources.get('limits', {})
-        # requests = resources.get('requests', {})
-
-        # if not limits or not requests:
-        #     self.checks.append(ReadinessCheck(
-        #         category="Performance",
-        #         check_name="Resource Limits",
-        #         status=CheckStatus.FAIL,
-        #         details="Resource limits and requests not configured",
-        #         blocker=True,
-        #         recommendation="Configure resource limits to prevent OOM and CPU throttling"
-        #     ))
-        # elif 'memory' not in limits or 'cpu' not in limits:
-        #     self.checks.append(ReadinessCheck(
-        #         category="Performance",
-        #         check_name="Resource Limits",
-        #         status=CheckStatus.WARNING,
-        #         details="Incomplete resource limits",
-        #         blocker=False,
-        #         recommendation="Set both CPU and memory limits"
-        #     ))
-        # else:
-        #     self.checks.append(ReadinessCheck(
-        #         category="Performance",
-        #         check_name="Resource Limits",
-        #         status=CheckStatus.PASS,
-        #         details=f"Resources configured: {limits}",
-        #         blocker=False
-        #     ))
-
-        pass
-
-    def _check_model_size(self):
-        """
-        Check model size is reasonable for deployment.
-
-        TODO: Verify model artifact size
-        """
-        # TODO: Get model size from MLflow
-        # client = mlflow.tracking.MlflowClient()
-        # run_id = self._get_model_run_id()
-        # artifacts = client.list_artifacts(run_id)
-
-        # TODO: Calculate total size
-        # total_size_mb = sum(artifact.file_size for artifact in artifacts) / (1024 * 1024)
-
-        # TODO: Check against threshold
-        # max_size_mb = self.deployment_config.get('max_model_size_mb', 1000)
-
-        # if total_size_mb > max_size_mb:
-        #     recommendation = "Consider model compression or quantization"
-        # else:
-        #     recommendation = None
-
-        pass
-
-    def _check_metrics_instrumentation(self):
-        """
-        Check if service exposes Prometheus metrics.
-
-        TODO: Verify metrics endpoint and required metrics
-        """
-        service_url = self.deployment_config.get('service_url')
-
-        if not service_url:
+        if max_qps >= expected_qps:
             self.checks.append(ReadinessCheck(
-                category="Monitoring",
-                check_name="Metrics Instrumentation",
-                status=CheckStatus.NOT_APPLICABLE,
-                details="Service URL not configured",
-                blocker=False
-            ))
-            return
-
-        # TODO: Check metrics endpoint
-        # try:
-        #     response = requests.get(f"{service_url}/metrics", timeout=5)
-        #     metrics_text = response.text
-
-        #     required_metrics = [
-        #         'prediction_latency',
-        #         'prediction_total',
-        #         'prediction_errors_total',
-        #         'model_version'
-        #     ]
-
-        #     missing_metrics = [m for m in required_metrics if m not in metrics_text]
-
-        #     if not missing_metrics:
-        #         status = CheckStatus.PASS
-        #         details = "All required metrics instrumented"
-        #     else:
-        #         status = CheckStatus.FAIL
-        #         details = f"Missing metrics: {', '.join(missing_metrics)}"
-
-        # except Exception as e:
-        #     status = CheckStatus.FAIL
-        #     details = f"Failed to check metrics: {str(e)}"
-
-        # self.checks.append(ReadinessCheck(
-        #     category="Monitoring",
-        #     check_name="Metrics Instrumentation",
-        #     status=status,
-        #     details=details,
-        #     blocker=(status == CheckStatus.FAIL)
-        # ))
-
-        pass
-
-    def _check_alerting_setup(self):
-        """
-        Check if alerts are configured.
-
-        TODO: Verify alert rules exist
-        """
-        alerts_config = self.deployment_config.get('alerts', [])
-
-        required_alerts = [
-            'high_error_rate',
-            'high_latency',
-            'low_availability'
-        ]
-
-        # TODO: Check configured alerts
-        # configured_alerts = [alert['name'] for alert in alerts_config]
-        # missing_alerts = [a for a in required_alerts if a not in configured_alerts]
-
-        # if not missing_alerts:
-        #     status = CheckStatus.PASS
-        #     details = f"{len(configured_alerts)} alerts configured"
-        # else:
-        #     status = CheckStatus.WARNING
-        #     details = f"Missing alerts: {', '.join(missing_alerts)}"
-
-        pass
-
-    def _check_runbook_exists(self):
-        """
-        Check if operational runbook exists.
-
-        TODO: Verify runbook documentation
-        """
-        import os
-
-        runbook_path = self.deployment_config.get('runbook_path')
-
-        if not runbook_path:
-            self.checks.append(ReadinessCheck(
-                category="Documentation",
-                check_name="Runbook",
-                status=CheckStatus.WARNING,
-                details="No runbook path configured",
-                blocker=False,
-                recommendation="Create operational runbook for incident response"
-            ))
-        elif not os.path.exists(runbook_path):
-            self.checks.append(ReadinessCheck(
-                category="Documentation",
-                check_name="Runbook",
-                status=CheckStatus.WARNING,
-                details=f"Runbook not found at {runbook_path}",
-                blocker=False,
-                recommendation="Create runbook before production deployment"
+                category="Performance", check_name="Throughput Capacity",
+                status=CheckStatus.PASS,
+                details=f"Single replica {max_qps} QPS >= expected {expected_qps} QPS",
             ))
         else:
-            # TODO: Check runbook completeness
-            # with open(runbook_path) as f:
-            #     content = f.read()
-            #     required_sections = ['Deployment', 'Monitoring', 'Incident Response', 'Rollback']
-            #     missing_sections = [s for s in required_sections if s not in content]
-
+            replicas = int(np.ceil(expected_qps / max(max_qps, 1)))
             self.checks.append(ReadinessCheck(
-                category="Documentation",
-                check_name="Runbook",
-                status=CheckStatus.PASS,
-                details=f"Runbook exists at {runbook_path}",
-                blocker=False
+                category="Performance", check_name="Throughput Capacity",
+                status=CheckStatus.WARNING,
+                details=f"Single replica {max_qps} QPS < expected {expected_qps} QPS",
+                recommendation=f"Deploy at least {replicas} replicas to meet expected load.",
             ))
 
-    def _check_slos_defined(self):
-        """
-        Check if SLOs are defined.
+    def _check_resource_limits(self) -> None:
+        """Verify CPU and memory requests/limits are set on the deployment."""
+        resources = self.deployment_config.get("kubernetes", {}).get("resources", {})
+        limits, requests_ = resources.get("limits", {}), resources.get("requests", {})
 
-        TODO: Verify SLO configuration
-        """
-        slos = self.deployment_config.get('slos', {})
+        if not limits or not requests_:
+            self.checks.append(ReadinessCheck(
+                category="Performance", check_name="Resource Limits",
+                status=CheckStatus.FAIL,
+                details="Resource limits and/or requests not configured",
+                blocker=True,
+                recommendation="Set CPU and memory requests and limits to prevent OOM and throttling.",
+            ))
+        elif "memory" not in limits or "cpu" not in limits:
+            self.checks.append(ReadinessCheck(
+                category="Performance", check_name="Resource Limits",
+                status=CheckStatus.WARNING,
+                details=f"Incomplete limits: {limits}",
+                recommendation="Set both CPU and memory limits.",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category="Performance", check_name="Resource Limits",
+                status=CheckStatus.PASS, details=f"Resources configured: {limits}",
+            ))
 
-        required_slos = ['availability', 'latency', 'error_rate']
+    def _check_metrics_instrumentation(self) -> None:
+        """Verify the service exposes a /metrics endpoint with required series."""
+        service_url = self.deployment_config.get("service_url")
+        if not service_url:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Metrics Instrumentation",
+                status=CheckStatus.NOT_APPLICABLE,
+                details="Service URL not configured; cannot probe /metrics",
+            ))
+            return
 
-        # TODO: Check SLO definitions
-        # defined_slos = list(slos.keys())
-        # missing_slos = [s for s in required_slos if s not in defined_slos]
+        required = ["prediction_latency", "prediction_total",
+                    "prediction_errors_total", "model_version"]
+        try:
+            response = requests.get(f"{service_url.rstrip('/')}/metrics", timeout=5)
+            response.raise_for_status()
+            missing = [name for name in required if name not in response.text]
+        except requests.RequestException as exc:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Metrics Instrumentation",
+                status=CheckStatus.FAIL,
+                details=f"Failed to scrape /metrics: {exc}",
+                blocker=True,
+                recommendation="Expose a Prometheus /metrics endpoint before deployment.",
+            ))
+            return
 
-        # if not missing_slos:
-        #     status = CheckStatus.PASS
-        #     details = f"All required SLOs defined: {defined_slos}"
-        # else:
-        #     status = CheckStatus.FAIL
-        #     details = f"Missing SLOs: {missing_slos}"
+        if missing:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Metrics Instrumentation",
+                status=CheckStatus.FAIL,
+                details=f"Missing required metrics: {', '.join(missing)}",
+                blocker=True,
+                recommendation="Instrument latency, request, error, and version metrics.",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Metrics Instrumentation",
+                status=CheckStatus.PASS, details="All required metrics instrumented",
+            ))
 
-        pass
+    def _check_alerting_setup(self) -> None:
+        """Verify required alert rules are configured."""
+        configured = {alert["name"] for alert in self.deployment_config.get("alerts", [])}
+        required = {"high_error_rate", "high_latency", "low_availability"}
+        missing = required - configured
 
-    def _check_error_handling(self):
-        """Check error handling implementation."""
-        # TODO: Verify error handling for common scenarios
-        pass
+        if not missing:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Alerting",
+                status=CheckStatus.PASS, details=f"{len(configured)} alerts configured",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category="Monitoring", check_name="Alerting",
+                status=CheckStatus.WARNING,
+                details=f"Missing alerts: {', '.join(sorted(missing))}",
+                recommendation="Add alerts for error rate, latency, and availability.",
+            ))
 
-    def _check_input_validation(self):
-        """Check input validation implementation."""
-        # TODO: Verify input validation and sanitization
-        pass
+    def _check_boolean_policy(
+        self, category: str, check_name: str, config_key: str, blocker: bool = False
+    ) -> None:
+        """Generic check for a policy flag in ``deployment_config['policies']``."""
+        enabled = self.deployment_config.get("policies", {}).get(config_key)
+        if enabled is True:
+            self.checks.append(ReadinessCheck(
+                category=category, check_name=check_name,
+                status=CheckStatus.PASS, details=f"{check_name} is enabled",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category=category, check_name=check_name,
+                status=CheckStatus.FAIL if blocker else CheckStatus.WARNING,
+                details=f"{check_name} is not enabled (policies.{config_key})",
+                blocker=blocker,
+                recommendation=f"Enable {check_name.lower()} before production deployment.",
+            ))
 
-    def _check_retry_logic(self):
-        """Check retry configuration."""
-        # TODO: Verify retry logic for transient failures
-        pass
+    def _check_runbook_exists(self) -> None:
+        """Verify an operational runbook exists with the required sections."""
+        path = self.deployment_config.get("runbook_path")
+        if not path or not os.path.exists(path):
+            self.checks.append(ReadinessCheck(
+                category="Documentation", check_name="Runbook",
+                status=CheckStatus.WARNING,
+                details=f"Runbook not found ({path or 'no path configured'})",
+                recommendation="Create a runbook covering deploy, monitor, incident, and rollback.",
+            ))
+            return
 
-    def _check_circuit_breakers(self):
-        """Check circuit breaker implementation."""
-        # TODO: Verify circuit breaker for downstream dependencies
-        pass
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read()
+        required = ["Deployment", "Monitoring", "Incident", "Rollback"]
+        missing = [section for section in required if section not in content]
+        if missing:
+            self.checks.append(ReadinessCheck(
+                category="Documentation", check_name="Runbook",
+                status=CheckStatus.WARNING,
+                details=f"Runbook missing sections: {', '.join(missing)}",
+                recommendation="Add the missing runbook sections.",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category="Documentation", check_name="Runbook",
+                status=CheckStatus.PASS, details=f"Complete runbook at {path}",
+            ))
 
-    def _check_logging_configuration(self):
-        """Check logging configuration."""
-        # TODO: Verify structured logging is implemented
-        pass
-
-    def _check_dashboards(self):
-        """Check if monitoring dashboards exist."""
-        # TODO: Verify Grafana/monitoring dashboards
-        pass
-
-    def _check_authentication(self):
-        """Check authentication implementation."""
-        # TODO: Verify API authentication
-        pass
-
-    def _check_authorization(self):
-        """Check authorization implementation."""
-        # TODO: Verify role-based access control
-        pass
-
-    def _check_secrets_management(self):
-        """Check secrets management."""
-        # TODO: Verify secrets are not hardcoded
-        pass
-
-    def _check_input_sanitization(self):
-        """Check input sanitization."""
-        # TODO: Verify protection against injection attacks
-        pass
-
-    def _check_feature_validation(self):
-        """Check feature validation."""
-        # TODO: Verify feature schema validation
-        pass
-
-    def _check_drift_monitoring(self):
-        """Check drift monitoring setup."""
-        # TODO: Verify drift detection is configured
-        pass
-
-    def _check_data_versioning(self):
-        """Check data versioning."""
-        # TODO: Verify data lineage tracking
-        pass
-
-    def _check_api_documentation(self):
-        """Check API documentation."""
-        # TODO: Verify API documentation exists (OpenAPI/Swagger)
-        pass
+    def _check_slos_defined(self) -> None:
+        """Verify availability, latency, and error-rate SLOs are defined."""
+        defined = set(self.deployment_config.get("slos", {}))
+        required = {"availability", "latency", "error_rate"}
+        missing = required - defined
+        if not missing:
+            self.checks.append(ReadinessCheck(
+                category="Documentation", check_name="SLOs Defined",
+                status=CheckStatus.PASS, details=f"SLOs defined: {sorted(defined)}",
+            ))
+        else:
+            self.checks.append(ReadinessCheck(
+                category="Documentation", check_name="SLOs Defined",
+                status=CheckStatus.FAIL,
+                details=f"Missing SLOs: {', '.join(sorted(missing))}",
+                blocker=True,
+                recommendation="Define availability, latency, and error-rate SLOs.",
+            ))
 
     def _get_sample_input(self):
-        """Get sample input for testing."""
-        # TODO: Generate or load representative sample data
-        return np.random.randn(1, 10)  # Placeholder
+        """Return a representative input batch. Replace with your production schema."""
+        n_features = self.deployment_config.get("n_features", 10)
+        return np.random.randn(1, n_features)
 
-    def _measure_average_latency(self) -> float:
-        """Measure average prediction latency."""
-        # TODO: Implement latency measurement
-        return 0.05  # Placeholder
+    def _measure_average_latency(self, iterations: int = 50) -> float:
+        """Average prediction latency in seconds over ``iterations`` calls."""
+        sample = self._get_sample_input()
+        durations = []
+        for _ in range(iterations):
+            start = time.perf_counter()
+            try:
+                self.model.predict(sample)
+            except Exception:  # noqa: BLE001 - latency probe must not crash the review
+                return -1.0
+            durations.append(time.perf_counter() - start)
+        return float(np.mean(durations))
 
     def _generate_summary(self) -> dict:
-        """
-        Generate readiness summary.
-
-        Returns:
-            Summary with go/no-go decision
-        """
+        """Roll up checks into a go/no-go decision."""
         blockers = [c for c in self.checks if c.blocker and c.status == CheckStatus.FAIL]
         warnings = [c for c in self.checks if c.status == CheckStatus.WARNING]
         passed = [c for c in self.checks if c.status == CheckStatus.PASS]
         failed = [c for c in self.checks if c.status == CheckStatus.FAIL]
+        ready = len(blockers) == 0
 
-        ready_for_production = len(blockers) == 0
+        def serialize(check: ReadinessCheck) -> dict:
+            return {
+                "category": check.category, "check": check.check_name,
+                "status": check.status.value, "details": check.details,
+                "blocker": check.blocker, "recommendation": check.recommendation,
+            }
 
         return {
-            'ready_for_production': ready_for_production,
-            'decision': 'GO' if ready_for_production else 'NO-GO',
-            'summary': {
-                'total_checks': len(self.checks),
-                'passed': len(passed),
-                'warnings': len(warnings),
-                'failed': len(failed),
-                'blockers': len(blockers)
+            "ready_for_production": ready,
+            "decision": "GO" if ready else "NO-GO",
+            "summary": {
+                "total_checks": len(self.checks),
+                "passed": len(passed), "warnings": len(warnings),
+                "failed": len(failed), "blockers": len(blockers),
             },
-            'blocker_details': [
-                {
-                    'category': c.category,
-                    'check': c.check_name,
-                    'details': c.details,
-                    'recommendation': c.recommendation
-                }
-                for c in blockers
-            ],
-            'warnings': [
-                {
-                    'category': c.category,
-                    'check': c.check_name,
-                    'details': c.details,
-                    'recommendation': c.recommendation
-                }
-                for c in warnings
-            ],
-            'all_checks': [
-                {
-                    'category': c.category,
-                    'check': c.check_name,
-                    'status': c.status.value,
-                    'details': c.details,
-                    'blocker': c.blocker,
-                    'recommendation': c.recommendation
-                }
-                for c in self.checks
-            ]
+            "blocker_details": [serialize(c) for c in blockers],
+            "warnings": [serialize(c) for c in warnings],
+            "all_checks": [serialize(c) for c in self.checks],
         }
 
 
 # Usage example
-if __name__ == '__main__':
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
+    class _DummyModel:
+        def predict(self, x):
+            return np.zeros(len(x))
+
     checker = ProductionReadinessChecker(
-        model_uri="models:/credit-classifier/staging",
+        model=_DummyModel(),
         deployment_config={
-            'latency_slo_ms': 100,
-            'expected_qps': 500,
-            'max_model_size_mb': 500,
-            'service_url': 'http://localhost:8000',
-            'runbook_path': 'runbooks/credit_model.md',
-            'kubernetes': {
-                'resources': {
-                    'requests': {'cpu': '1', 'memory': '2Gi'},
-                    'limits': {'cpu': '2', 'memory': '4Gi'}
+            "latency_slo_ms": 100,
+            "expected_qps": 500,
+            "n_features": 10,
+            "service_url": None,  # set to a real URL to probe /metrics
+            "runbook_path": "runbooks/credit_model.md",
+            "kubernetes": {
+                "resources": {
+                    "requests": {"cpu": "1", "memory": "2Gi"},
+                    "limits": {"cpu": "2", "memory": "4Gi"},
                 }
             },
-            'slos': {
-                'availability': 99.9,
-                'latency': 100,
-                'error_rate': 0.1
+            "slos": {"availability": 99.9, "latency": 100, "error_rate": 0.1},
+            "alerts": [
+                {"name": "high_error_rate"},
+                {"name": "high_latency"},
+                {"name": "low_availability"},
+            ],
+            "policies": {
+                "input_validation": True,
+                "retry_logic": True,
+                "circuit_breakers": False,
+                "authentication": True,
+                "secrets_management": True,
+                "drift_monitoring": True,
+                "data_versioning": False,
             },
-            'alerts': [
-                {'name': 'high_error_rate'},
-                {'name': 'high_latency'},
-                {'name': 'low_availability'}
-            ]
-        }
+        },
     )
 
     results = checker.run_all_checks()
-
-    print(f"\n{'='*60}")
-    print(f"Production Readiness Assessment")
-    print(f"{'='*60}")
     print(f"\nDecision: {results['decision']}")
-    print(f"\nSummary:")
-    print(f"  Total checks: {results['summary']['total_checks']}")
-    print(f"  Passed: {results['summary']['passed']}")
-    print(f"  Warnings: {results['summary']['warnings']}")
-    print(f"  Failed: {results['summary']['failed']}")
-    print(f"  Blockers: {results['summary']['blockers']}")
-
-    if results['blocker_details']:
-        print(f"\n🚫 Blocking Issues:")
-        for blocker in results['blocker_details']:
-            print(f"\n  [{blocker['category']}] {blocker['check']}")
-            print(f"    {blocker['details']}")
-            if blocker['recommendation']:
-                print(f"    💡 {blocker['recommendation']}")
-
-    if results['warnings']:
-        print(f"\n⚠️  Warnings:")
-        for warning in results['warnings']:
-            print(f"\n  [{warning['category']}] {warning['check']}")
-            print(f"    {warning['details']}")
-            if warning['recommendation']:
-                print(f"    💡 {warning['recommendation']}")
+    print(f"Summary: {results['summary']}")
+    for blocker in results["blocker_details"]:
+        print(f"  BLOCKER [{blocker['category']}] {blocker['check']}: {blocker['details']}")
 ```
 
 ### Validation
 
-Test your production readiness checker:
-
 ```python
 # test_production_readiness.py
+"""Tests for the production-readiness checker."""
+
+import time
+
+import numpy as np
 import pytest
-from production_readiness import ProductionReadinessChecker, CheckStatus
 
-def test_latency_check_passes_when_within_slo():
-    """Test latency check passes when within SLO."""
-    # TODO: Create checker with fast model
-    # TODO: Run latency check
-    # TODO: Assert status is PASS
-    pass
+from production_readiness import CheckStatus, ProductionReadinessChecker
 
-def test_latency_check_fails_when_exceeds_slo():
-    """Test latency check fails when exceeding SLO."""
-    # TODO: Create checker with slow model
-    # TODO: Run latency check
-    # TODO: Assert status is FAIL
-    pass
 
-def test_missing_metrics_marked_as_blocker():
-    """Test missing metrics are blocking issues."""
-    # TODO: Create checker with no metrics endpoint
-    # TODO: Run metrics check
-    # TODO: Assert blocker=True
-    pass
+class FastModel:
+    def predict(self, x):
+        return np.zeros(len(x))
 
-def test_summary_shows_no_go_with_blockers():
-    """Test summary shows NO-GO when blockers present."""
-    # TODO: Create checker with failing checks
-    # TODO: Generate summary
-    # TODO: Assert decision is NO-GO
-    pass
+
+class SlowModel:
+    def predict(self, x):
+        time.sleep(0.2)  # 200ms — exceeds a 100ms SLO
+        return np.zeros(len(x))
+
+
+def _config(**overrides):
+    base = {
+        "latency_slo_ms": 100, "expected_qps": 1, "n_features": 4,
+        "service_url": None, "runbook_path": None,
+        "kubernetes": {"resources": {
+            "requests": {"cpu": "1", "memory": "1Gi"},
+            "limits": {"cpu": "1", "memory": "1Gi"},
+        }},
+        "slos": {"availability": 99.9, "latency": 100, "error_rate": 0.1},
+        "alerts": [{"name": "high_error_rate"}, {"name": "high_latency"},
+                   {"name": "low_availability"}],
+        "policies": {k: True for k in (
+            "input_validation", "retry_logic", "circuit_breakers",
+            "authentication", "secrets_management", "drift_monitoring", "data_versioning")},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_latency_check_passes_when_fast():
+    checker = ProductionReadinessChecker(FastModel(), _config())
+    checker._check_latency_requirements()
+    latency = next(c for c in checker.checks if c.check_name == "Latency SLO")
+    assert latency.status == CheckStatus.PASS
+
+
+def test_latency_check_fails_when_slow():
+    checker = ProductionReadinessChecker(SlowModel(), _config())
+    checker._check_latency_requirements()
+    latency = next(c for c in checker.checks if c.check_name == "Latency SLO")
+    assert latency.status == CheckStatus.FAIL
+    assert latency.blocker is True
+
+
+def test_missing_slo_is_blocking():
+    checker = ProductionReadinessChecker(FastModel(), _config(slos={"availability": 99.9}))
+    checker._check_slos_defined()
+    slo = next(c for c in checker.checks if c.check_name == "SLOs Defined")
+    assert slo.blocker is True
+
+
+def test_summary_is_no_go_with_blockers():
+    checker = ProductionReadinessChecker(SlowModel(), _config())
+    results = checker.run_all_checks()
+    assert results["decision"] == "NO-GO"
+    assert results["summary"]["blockers"] >= 1
 
 # Run with: pytest test_production_readiness.py -v
 ```
 
 ### Success Criteria
 
-- [ ] All check categories implemented
-- [ ] Latency testing works correctly
-- [ ] Blocker vs. warning distinction clear
-- [ ] Summary generates go/no-go decision
-- [ ] Recommendations provided for failures
+- [ ] All six check categories are implemented and runnable
+- [ ] Latency check measures real p50/p95/p99 and compares to the SLO
+- [ ] Throughput check estimates QPS with utilization headroom and recommends replica counts
+- [ ] Metrics check probes the live `/metrics` endpoint for required series
+- [ ] Blocking failures flip the decision to NO-GO; warnings do not block
+- [ ] The summary returns a structured, serializable go/no-go report
 - [ ] Tests pass
 
 ### Solution Hints
@@ -695,12 +513,16 @@ def test_summary_shows_no_go_with_blockers():
 <details>
 <summary>Click to reveal hints</summary>
 
-1. **Latency Testing**: Use percentiles (P50, P95, P99) not just average
-2. **Sample Input**: Generate realistic test data matching production schema
-3. **Metrics Endpoint**: Use requests library with timeout to check /metrics
-4. **Categorization**: Group related checks (performance, monitoring, security)
-5. **Blockers**: Mark critical checks (latency, metrics, security) as blockers
-6. **Recommendations**: Provide actionable next steps for each failure
+1. **Percentiles, not averages**: p99 latency is what users feel under load — gate on it.
+2. **Utilization headroom**: never plan capacity at 100%; 70% leaves room for GC, bursts, and
+   noisy neighbors.
+3. **Blocker vs. warning**: make security, metrics, latency, and SLO checks blockers; treat
+   dashboards and optional alerts as warnings.
+4. **Probe, don't assume**: actually `GET /metrics` and grep for required series rather than trusting
+   that instrumentation exists.
+5. **Policy flags**: model reliability/security/data posture as explicit config so the review is
+   reproducible and auditable.
+6. **Actionable output**: every failure carries a recommendation so the report doubles as a fix list.
 
 </details>
 

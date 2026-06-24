@@ -1,36 +1,51 @@
 ## Exercise 3: Model Card Generation & Documentation (75 minutes)
 
-**Objective**: Create comprehensive model cards following industry standards for ML model documentation.
+**Objective**: Build a model card generator that produces complete, standards-aligned ML model documentation in Markdown, HTML, and JSON, with completeness validation.
 
 ### Background
 
-Model cards provide transparent documentation of ML models including:
-- Model details and architecture
-- Intended use and limitations
-- Training data and evaluation metrics
-- Fairness analysis
-- Ethical considerations
+A model card is the canonical artifact for transparent model documentation — required by most ML
+governance frameworks and a near-universal expectation in regulated industries. Following the
+"Model Cards for Model Reporting" pattern (Mitchell et al., 2019) and the Hugging Face card schema,
+a good card answers:
+
+- **What is this model?** Architecture, version, owner, license.
+- **What is it for — and not for?** Intended uses, out-of-scope uses, limitations.
+- **What was it trained on?** Dataset provenance, preprocessing, known biases.
+- **How well does it work?** Overall metrics *and* metrics sliced by group.
+- **Is it fair?** Protected attributes, fairness metrics, disparate impact, mitigation.
+- **What could go wrong?** Risks, mitigations, stakeholder impact, fairness trade-offs.
+
+The card is only useful if it is generated from the same metadata your evaluation pipeline already
+produces — a hand-written card drifts immediately. In this exercise you build the generator so the
+card is a deterministic render of structured inputs, and you add validation so an incomplete card
+fails CI rather than shipping with `TODO` sections.
 
 ### Tasks
 
-1. **Implement model card generator**
-2. **Document model details and performance**
-3. **Include fairness and bias analysis**
-4. **Add ethical considerations**
-5. **Generate HTML/Markdown reports**
+1. **Model the card** with typed dataclasses (provided).
+2. **Implement `create_model_card`** to assemble the typed sections into a `ModelCard`.
+3. **Implement `generate_markdown`** to render a complete, readable Markdown card.
+4. **Implement `generate_html`** by converting the Markdown and wrapping it in styled HTML.
+5. **Implement `generate_json`** with `dataclasses.asdict` so the card is machine-readable.
+6. **Implement `validate_model_card`** to flag missing or placeholder sections.
+7. **Implement `save_model_card`** to write any format to disk.
 
 ### Starter Code
+
+The dataclasses define the card schema. Every generator method below is fully implemented — use
+them as the reference and adapt the rendered sections to your organization's template.
 
 ```python
 # src/governance/model_card.py
 """Model card generation for ML model documentation."""
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
-from datetime import datetime
 import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 import markdown
-from jinja2 import Template
 
 
 @dataclass
@@ -75,9 +90,9 @@ class TrainingData:
 class PerformanceMetrics:
     """Model performance metrics."""
     overall_metrics: Dict[str, float]
-    performance_by_group: Optional[Dict[str, Dict[str, float]]] = None
+    performance_by_group: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None
     test_set_size: Optional[int] = None
-    confidence_intervals: Optional[Dict[str, tuple]] = None
+    confidence_intervals: Optional[Dict[str, Tuple[float, float]]] = None
 
 
 @dataclass
@@ -113,12 +128,33 @@ class ModelCard:
     additional_info: Optional[Dict[str, Any]] = None
 
 
+def _bullets(items: List[str]) -> str:
+    """Render a list as Markdown bullets, or an explicit '_None specified_' if empty."""
+    if not items:
+        return "_None specified_"
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _metric_table(metrics: Dict[str, float]) -> str:
+    """Render a flat metric dict as a Markdown table."""
+    if not metrics:
+        return "_No metrics reported_"
+    rows = ["| Metric | Value |", "| --- | --- |"]
+    rows += [f"| {name} | {value:.4f} |" for name, value in metrics.items()]
+    return "\n".join(rows)
+
+
 class ModelCardGenerator:
     """Generate model cards for ML models."""
 
-    def __init__(self):
-        """Initialize model card generator."""
-        self.card = None
+    REQUIRED_SECTIONS = (
+        "model_details",
+        "intended_use",
+        "training_data",
+        "performance_metrics",
+        "fairness_analysis",
+        "ethical_considerations",
+    )
 
     def create_model_card(
         self,
@@ -127,422 +163,513 @@ class ModelCardGenerator:
         training_data: TrainingData,
         performance_metrics: PerformanceMetrics,
         fairness_analysis: FairnessAnalysis,
-        ethical_considerations: EthicalConsiderations
+        ethical_considerations: EthicalConsiderations,
+        additional_info: Optional[Dict[str, Any]] = None,
     ) -> ModelCard:
-        """
-        Create complete model card.
-
-        Args:
-            model_details: Model information
-            intended_use: Use cases and limitations
-            training_data: Training data details
-            performance_metrics: Performance metrics
-            fairness_analysis: Fairness analysis
-            ethical_considerations: Ethical considerations
-
-        Returns:
-            Complete ModelCard object
-        """
-        # TODO: Create ModelCard object
-        # self.card = ModelCard(...)
-        # return self.card
-        pass
+        """Assemble the typed sections into a complete ModelCard."""
+        return ModelCard(
+            model_details=model_details,
+            intended_use=intended_use,
+            training_data=training_data,
+            performance_metrics=performance_metrics,
+            fairness_analysis=fairness_analysis,
+            ethical_considerations=ethical_considerations,
+            additional_info=additional_info,
+        )
 
     def generate_markdown(self, card: ModelCard) -> str:
-        """
-        Generate Markdown representation of model card.
+        """Render the card as Markdown."""
+        d = card.model_details
+        use = card.intended_use
+        data = card.training_data
+        perf = card.performance_metrics
+        fair = card.fairness_analysis
+        ethics = card.ethical_considerations
 
-        Args:
-            card: ModelCard object
+        sections = [
+            f"# Model Card: {d.name}",
+            "",
+            "## Model Details",
+            "",
+            f"- **Name:** {d.name}",
+            f"- **Version:** {d.version}",
+            f"- **Type:** {d.model_type}",
+            f"- **Architecture:** {d.model_architecture}",
+            f"- **Developer:** {d.developer}",
+            f"- **Contact:** {d.contact}",
+            f"- **Training Date:** {d.training_date.strftime('%Y-%m-%d')}",
+            f"- **License:** {d.license}",
+        ]
+        if d.repository:
+            sections.append(f"- **Repository:** {d.repository}")
+        if d.paper:
+            sections.append(f"- **Paper:** {d.paper}")
 
-        Returns:
-            Markdown string
-        """
-        # TODO: Generate Markdown following this structure:
-        markdown_content = """
-# Model Card: {model_name}
+        sections += [
+            "",
+            "## Intended Use",
+            "",
+            "### Primary Uses",
+            "",
+            _bullets(use.primary_uses),
+            "",
+            "### Primary Users",
+            "",
+            _bullets(use.primary_users),
+            "",
+            "### Out-of-Scope Uses",
+            "",
+            _bullets(use.out_of_scope_uses),
+            "",
+            "### Limitations",
+            "",
+            _bullets(use.limitations),
+            "",
+            "### Warnings",
+            "",
+            _bullets(use.warnings),
+            "",
+            "## Training Data",
+            "",
+            f"- **Dataset:** {data.dataset_name}",
+            f"- **Size:** {data.dataset_size:,} samples",
+            f"- **Description:** {data.dataset_description}",
+            f"- **Collection Period:** {data.data_collection_period}",
+            "",
+            "### Data Sources",
+            "",
+            _bullets(data.data_sources),
+            "",
+            "### Preprocessing",
+            "",
+            _bullets(data.preprocessing),
+            "",
+            "### Train/Test Split",
+            "",
+            _bullets([f"{name}: {ratio:.0%}" for name, ratio in data.train_test_split.items()]),
+            "",
+            "### Known Biases",
+            "",
+            _bullets(data.known_biases),
+            "",
+            "## Performance Metrics",
+            "",
+            "### Overall Performance",
+            "",
+            _metric_table(perf.overall_metrics),
+            "",
+        ]
 
-## Model Details
-- **Name:** {model_name}
-- **Version:** {version}
-- **Type:** {model_type}
-- **Architecture:** {architecture}
-- **Developer:** {developer}
-- **Training Date:** {training_date}
-- **License:** {license}
+        if perf.test_set_size:
+            sections += [f"**Test set size:** {perf.test_set_size:,} samples", ""]
 
-## Intended Use
+        if perf.confidence_intervals:
+            ci_rows = ["| Metric | 95% CI |", "| --- | --- |"]
+            ci_rows += [
+                f"| {name} | ({low:.4f}, {high:.4f}) |"
+                for name, (low, high) in perf.confidence_intervals.items()
+            ]
+            sections += ["### Confidence Intervals", "", "\n".join(ci_rows), ""]
 
-### Primary Uses
-{primary_uses}
+        if perf.performance_by_group:
+            sections += ["### Performance by Group", ""]
+            for attribute, groups in perf.performance_by_group.items():
+                sections.append(f"**{attribute}**")
+                sections.append("")
+                for group_name, group_metrics in groups.items():
+                    rendered = ", ".join(f"{k}: {v:.4f}" for k, v in group_metrics.items())
+                    sections.append(f"- {group_name}: {rendered}")
+                sections.append("")
 
-### Primary Users
-{primary_users}
+        sections += [
+            "## Fairness Analysis",
+            "",
+            "### Protected Attributes",
+            "",
+            _bullets(fair.protected_attributes),
+            "",
+            "### Fairness Metrics",
+            "",
+            _metric_table(fair.fairness_metrics),
+            "",
+            "### Disparate Impact Ratio",
+            "",
+            _metric_table(fair.disparate_impact_ratio),
+            "",
+            "### Bias Mitigation Applied",
+            "",
+            _bullets(fair.bias_mitigation_applied),
+            "",
+            f"**Residual bias:** {fair.residual_bias}",
+            "",
+            f"**Ongoing monitoring:** {fair.ongoing_monitoring}",
+            "",
+            "## Ethical Considerations",
+            "",
+            "### Risks",
+            "",
+            _bullets(ethics.risks),
+            "",
+            "### Mitigation Strategies",
+            "",
+            _bullets(ethics.mitigation_strategies),
+            "",
+            "### Use Cases to Avoid",
+            "",
+            _bullets(ethics.use_cases_to_avoid),
+            "",
+            "### Stakeholder Impact",
+            "",
+            _bullets([f"**{who}:** {impact}" for who, impact in ethics.stakeholder_impact.items()]),
+            "",
+            f"**Fairness trade-offs:** {ethics.fairness_tradeoffs}",
+            "",
+        ]
 
-### Out-of-Scope Uses
-{out_of_scope}
+        if card.additional_info:
+            sections += ["## Additional Information", ""]
+            sections += [f"- **{k}:** {v}" for k, v in card.additional_info.items()]
+            sections.append("")
 
-### Limitations
-{limitations}
-
-## Training Data
-
-### Dataset
-- **Name:** {dataset_name}
-- **Size:** {dataset_size:,} samples
-- **Description:** {dataset_description}
-
-### Data Sources
-{data_sources}
-
-### Preprocessing
-{preprocessing}
-
-## Performance Metrics
-
-### Overall Performance
-{overall_metrics}
-
-### Performance by Group
-{performance_by_group}
-
-## Fairness Analysis
-
-### Protected Attributes
-{protected_attributes}
-
-### Fairness Metrics
-{fairness_metrics}
-
-### Disparate Impact Analysis
-{disparate_impact}
-
-### Bias Mitigation
-{bias_mitigation}
-
-## Ethical Considerations
-
-### Risks
-{risks}
-
-### Mitigation Strategies
-{mitigation_strategies}
-
-### Use Cases to Avoid
-{use_cases_to_avoid}
-
-## Additional Information
-{additional_info}
-
----
-
-*Generated: {generation_date}*
-"""
-
-        # TODO: Fill in template with card data
-        # TODO: Return formatted markdown
-        pass
+        sections += ["---", "", f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"]
+        return "\n".join(sections)
 
     def generate_html(self, card: ModelCard) -> str:
+        """Render the card as styled, standalone HTML."""
+        body = markdown.markdown(
+            self.generate_markdown(card), extensions=["tables", "fenced_code"]
+        )
+        css = """
+        body { font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+               max-width: 880px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+        h1 { border-bottom: 3px solid #2563eb; padding-bottom: .3rem; }
+        h2 { margin-top: 2rem; color: #1e3a8a; }
+        table { border-collapse: collapse; width: 100%; margin: .5rem 0; }
+        th, td { border: 1px solid #cbd5e1; padding: .4rem .6rem; text-align: left; }
+        th { background: #eff6ff; }
+        code { background: #f1f5f9; padding: .1rem .3rem; border-radius: 3px; }
         """
-        Generate HTML representation of model card.
-
-        Args:
-            card: ModelCard object
-
-        Returns:
-            HTML string
-        """
-        # TODO: Generate HTML with styling
-        # Option 1: Convert markdown to HTML
-        # Option 2: Use Jinja2 HTML template
-        # TODO: Include CSS for nice formatting
-        # TODO: Add interactive elements (collapsible sections)
-        pass
+        return (
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+            f"<meta charset=\"utf-8\">\n<title>Model Card: {card.model_details.name}</title>\n"
+            f"<style>{css}</style>\n</head>\n<body>\n{body}\n</body>\n</html>\n"
+        )
 
     def generate_json(self, card: ModelCard) -> str:
-        """
-        Generate JSON representation of model card.
+        """Serialize the card to JSON (datetimes rendered as ISO strings)."""
+        return json.dumps(asdict(card), indent=2, default=str)
 
-        Args:
-            card: ModelCard object
-
-        Returns:
-            JSON string
-        """
-        # TODO: Convert ModelCard to dictionary
-        # TODO: Serialize to JSON
-        # TODO: Return JSON string
-        pass
-
-    def save_model_card(
-        self,
-        card: ModelCard,
-        output_path: str,
-        format: str = 'markdown'
-    ):
-        """
-        Save model card to file.
-
-        Args:
-            card: ModelCard object
-            output_path: Output file path
-            format: Output format ('markdown', 'html', 'json')
-        """
-        # TODO: Generate content in requested format
-        # TODO: Write to file
-        pass
+    def save_model_card(self, card: ModelCard, output_path: str, fmt: str = "markdown") -> None:
+        """Generate the card in ``fmt`` and write it to ``output_path``."""
+        renderers = {
+            "markdown": self.generate_markdown,
+            "html": self.generate_html,
+            "json": self.generate_json,
+        }
+        if fmt not in renderers:
+            raise ValueError(f"Unsupported format: {fmt}. Choose one of {list(renderers)}.")
+        with open(output_path, "w", encoding="utf-8") as handle:
+            handle.write(renderers[fmt](card))
 
     def validate_model_card(self, card: ModelCard) -> List[str]:
         """
-        Validate model card completeness.
-
-        Args:
-            card: ModelCard object
-
-        Returns:
-            List of validation warnings/errors
+        Validate completeness. Returns a list of human-readable issues
+        (empty list means the card passes).
         """
-        issues = []
+        issues: List[str] = []
 
-        # TODO: Check required fields are present
-        # - Model name, version, type
-        # - At least one intended use
-        # - At least one limitation
-        # - Training data information
-        # - Performance metrics
-        # - Fairness analysis
+        if not card.model_details.name:
+            issues.append("model_details.name is empty")
+        if not card.model_details.version:
+            issues.append("model_details.version is empty")
 
-        # TODO: Check for completeness
-        # - Are all sections filled in?
-        # - Are there placeholder values?
-        # - Are fairness metrics included?
+        if not card.intended_use.primary_uses:
+            issues.append("intended_use.primary_uses must list at least one use")
+        if not card.intended_use.limitations:
+            issues.append("intended_use.limitations must list at least one limitation")
+        if not card.intended_use.out_of_scope_uses:
+            issues.append("intended_use.out_of_scope_uses must list at least one entry")
 
-        # TODO: Return list of issues
+        if card.training_data.dataset_size <= 0:
+            issues.append("training_data.dataset_size must be positive")
+        if not card.training_data.data_sources:
+            issues.append("training_data.data_sources must list at least one source")
+
+        if not card.performance_metrics.overall_metrics:
+            issues.append("performance_metrics.overall_metrics is empty")
+
+        if not card.fairness_analysis.protected_attributes:
+            issues.append("fairness_analysis.protected_attributes is empty")
+        if not card.fairness_analysis.fairness_metrics:
+            issues.append("fairness_analysis.fairness_metrics is empty")
+
+        if not card.ethical_considerations.risks:
+            issues.append("ethical_considerations.risks must list at least one risk")
+
+        # Catch lingering placeholder text in free-form fields.
+        placeholder_tokens = ("todo", "tbd", "fixme", "xxx", "<placeholder>")
+        for label, text in (
+            ("fairness_analysis.residual_bias", card.fairness_analysis.residual_bias),
+            ("ethical_considerations.fairness_tradeoffs", card.ethical_considerations.fairness_tradeoffs),
+        ):
+            if text and any(token in text.lower() for token in placeholder_tokens):
+                issues.append(f"{label} contains placeholder text: {text!r}")
+
         return issues
 ```
 
 ### Example Usage
 
+This script builds a card for a loan-approval model, validates it, and writes all three formats.
+
 ```python
 # scripts/create_model_card.py
-"""Example script to create model card."""
+"""Build, validate, and export a model card."""
+
+from datetime import datetime
 
 from src.governance.model_card import (
+    EthicalConsiderations,
+    FairnessAnalysis,
+    IntendedUse,
     ModelCardGenerator,
     ModelDetails,
-    IntendedUse,
-    TrainingData,
     PerformanceMetrics,
-    FairnessAnalysis,
-    EthicalConsiderations
+    TrainingData,
 )
-from datetime import datetime
+
+
+def build_card():
+    generator = ModelCardGenerator()
+    return generator, generator.create_model_card(
+        model_details=ModelDetails(
+            name="Loan Approval Model",
+            version="1.2.0",
+            model_type="Binary Classification",
+            model_architecture="Gradient Boosted Trees (XGBoost)",
+            training_date=datetime(2024, 10, 15),
+            developer="ML Team - Financial Services Division",
+            contact="ml-team@company.com",
+            license="Proprietary",
+            repository="https://github.com/company/loan-model",
+        ),
+        intended_use=IntendedUse(
+            primary_uses=[
+                "Automated approval decisions for personal loans under $50,000",
+                "Risk assessment for loan applications",
+                "Prioritization of applications for manual review",
+            ],
+            primary_users=["Loan officers", "Risk assessment teams", "Lending platform"],
+            out_of_scope_uses=[
+                "Mortgage or business loan approvals",
+                "Loans over $50,000",
+                "Decisions without human oversight",
+            ],
+            limitations=[
+                "Performance degrades for applicants with thin credit files",
+                "May not generalize beyond the training economic period",
+                "Requires quarterly retraining to maintain performance",
+            ],
+            warnings=[
+                "Must be used in compliance with fair lending regulations",
+                "Human review required for declined applications",
+            ],
+        ),
+        training_data=TrainingData(
+            dataset_name="Historical Loan Applications 2020-2024",
+            dataset_size=150_000,
+            dataset_description="Historical applications with approval and repayment outcomes",
+            data_sources=["Internal loan database", "Credit bureau data", "Income verification"],
+            preprocessing=[
+                "PII removal",
+                "Feature engineering: debt-to-income ratio, credit utilization",
+                "Median/mode imputation for missing values",
+                "Outlier capping at the 99th percentile",
+            ],
+            train_test_split={"train": 0.7, "validation": 0.15, "test": 0.15},
+            data_collection_period="January 2020 - June 2024",
+            known_biases=[
+                "Historical bias: lower approval rates for minority groups",
+                "Geographic bias: underrepresentation of rural applicants",
+            ],
+        ),
+        performance_metrics=PerformanceMetrics(
+            overall_metrics={
+                "accuracy": 0.87, "precision": 0.84, "recall": 0.82,
+                "f1_score": 0.83, "auc_roc": 0.91,
+            },
+            performance_by_group={
+                "gender": {
+                    "male": {"accuracy": 0.88, "precision": 0.85},
+                    "female": {"accuracy": 0.86, "precision": 0.83},
+                },
+            },
+            test_set_size=22_500,
+            confidence_intervals={"accuracy": (0.85, 0.89), "precision": (0.82, 0.86)},
+        ),
+        fairness_analysis=FairnessAnalysis(
+            protected_attributes=["gender", "race", "age"],
+            fairness_metrics={
+                "demographic_parity_difference": 0.05,
+                "equalized_odds_difference": 0.08,
+                "equal_opportunity_difference": 0.06,
+            },
+            disparate_impact_ratio={"gender": 0.92, "race": 0.85, "age": 0.88},
+            bias_mitigation_applied=[
+                "Reweighing of training samples",
+                "Post-processing threshold optimization",
+            ],
+            residual_bias="Minor disparate impact for race (DI ratio 0.85); ongoing monitoring.",
+            ongoing_monitoring="Monthly fairness audits, quarterly retraining with constraints.",
+        ),
+        ethical_considerations=EthicalConsiderations(
+            risks=[
+                "Discriminatory outcomes if fairness monitoring lapses",
+                "Over-reliance reduces human judgment in edge cases",
+            ],
+            mitigation_strategies=[
+                "Mandatory human review for all denials",
+                "Adverse-action explanations for declined applications",
+            ],
+            use_cases_to_avoid=["Fully automated decisions without human oversight"],
+            stakeholder_impact={
+                "applicants": "Direct impact on loan access and financial opportunity",
+                "company": "Regulatory compliance and reputation risk",
+            },
+            fairness_tradeoffs="~2% accuracy reduction in exchange for improved group fairness.",
+        ),
+    )
 
 
 def main():
-    """Create example model card for loan approval model."""
+    generator, card = build_card()
 
-    # TODO: Define model details
-    model_details = ModelDetails(
-        name="Loan Approval Model",
-        version="1.2.0",
-        model_type="Binary Classification",
-        model_architecture="Gradient Boosted Trees (XGBoost)",
-        training_date=datetime(2024, 10, 15),
-        developer="ML Team - Financial Services Division",
-        contact="ml-team@company.com",
-        license="Proprietary",
-        repository="https://github.com/company/loan-model"
-    )
-
-    # TODO: Define intended use
-    intended_use = IntendedUse(
-        primary_uses=[
-            "Automated loan approval decisions for personal loans under $50,000",
-            "Risk assessment for loan applications",
-            "Prioritization of applications for manual review"
-        ],
-        primary_users=[
-            "Loan officers",
-            "Risk assessment teams",
-            "Automated lending platform"
-        ],
-        out_of_scope_uses=[
-            "Mortgage or business loan approvals",
-            "Loans over $50,000",
-            "Decisions without human oversight",
-            "Use in jurisdictions with different lending regulations"
-        ],
-        limitations=[
-            "Model performance degrades for applicants with thin credit files",
-            "May not generalize to economic conditions outside training period",
-            "Requires quarterly retraining to maintain performance",
-            "Not suitable for first-time borrowers without credit history"
-        ],
-        warnings=[
-            "Must be used in compliance with fair lending regulations",
-            "Human review required for declined applications",
-            "Monitor for fairness violations in production"
-        ]
-    )
-
-    # TODO: Define training data
-    training_data = TrainingData(
-        dataset_name="Historical Loan Applications 2020-2024",
-        dataset_size=150000,
-        dataset_description="Historical loan applications with outcomes (approved/denied) and repayment data",
-        data_sources=[
-            "Internal loan application database",
-            "Credit bureau data",
-            "Income verification systems"
-        ],
-        preprocessing=[
-            "Removal of personally identifiable information",
-            "Feature engineering: debt-to-income ratio, credit utilization",
-            "Handling missing values: median imputation for numerical, mode for categorical",
-            "Outlier capping at 99th percentile for continuous features"
-        ],
-        train_test_split={
-            "train": 0.7,
-            "validation": 0.15,
-            "test": 0.15
-        },
-        data_collection_period="January 2020 - June 2024",
-        known_biases=[
-            "Historical bias: Lower approval rates for minority groups due to systemic factors",
-            "Geographic bias: Underrepresentation of rural applicants"
-        ]
-    )
-
-    # TODO: Define performance metrics
-    performance_metrics = PerformanceMetrics(
-        overall_metrics={
-            "accuracy": 0.87,
-            "precision": 0.84,
-            "recall": 0.82,
-            "f1_score": 0.83,
-            "auc_roc": 0.91
-        },
-        performance_by_group={
-            "gender": {
-                "male": {"accuracy": 0.88, "precision": 0.85},
-                "female": {"accuracy": 0.86, "precision": 0.83}
-            },
-            "race": {
-                "white": {"accuracy": 0.88, "precision": 0.86},
-                "black": {"accuracy": 0.85, "precision": 0.81},
-                "hispanic": {"accuracy": 0.86, "precision": 0.82}
-            }
-        },
-        test_set_size=22500,
-        confidence_intervals={
-            "accuracy": (0.85, 0.89),
-            "precision": (0.82, 0.86)
-        }
-    )
-
-    # TODO: Define fairness analysis
-    fairness_analysis = FairnessAnalysis(
-        protected_attributes=["gender", "race", "age"],
-        fairness_metrics={
-            "demographic_parity_difference": 0.05,
-            "equalized_odds_difference": 0.08,
-            "equal_opportunity_difference": 0.06
-        },
-        disparate_impact_ratio={
-            "gender": 0.92,
-            "race": 0.85,
-            "age": 0.88
-        },
-        bias_mitigation_applied=[
-            "Reweighing of training samples",
-            "Post-processing threshold optimization",
-            "Regular fairness audits"
-        ],
-        residual_bias="Minor disparate impact detected for race (DI ratio: 0.85). Ongoing monitoring required.",
-        ongoing_monitoring="Monthly fairness audits, quarterly model retraining with fairness constraints"
-    )
-
-    # TODO: Define ethical considerations
-    ethical_considerations = EthicalConsiderations(
-        risks=[
-            "Potential for discriminatory outcomes if fairness monitoring lapses",
-            "Over-reliance on model could reduce human judgment in edge cases",
-            "Privacy risk if model features inadvertently expose sensitive information",
-            "Economic harm to applicants if model errors lead to unfair denials"
-        ],
-        mitigation_strategies=[
-            "Mandatory human review for all denials",
-            "Regular fairness audits by independent team",
-            "Adverse action explanations for all denied applications",
-            "Appeals process with human adjudication",
-            "Quarterly model retraining with updated fairness constraints"
-        ],
-        use_cases_to_avoid=[
-            "Fully automated decisions without human oversight",
-            "Use on protected classes without fairness validation",
-            "Deployment without adverse action explanation capability"
-        ],
-        stakeholder_impact={
-            "applicants": "Direct impact on loan access and financial opportunities",
-            "loan_officers": "Tool to support but not replace decision-making",
-            "company": "Regulatory compliance and reputation risk",
-            "regulators": "Fair lending compliance oversight"
-        },
-        fairness_tradeoffs="Slight reduction in overall accuracy (2%) in exchange for improved fairness across demographic groups"
-    )
-
-    # TODO: Create model card
-    generator = ModelCardGenerator()
-    card = generator.create_model_card(
-        model_details=model_details,
-        intended_use=intended_use,
-        training_data=training_data,
-        performance_metrics=performance_metrics,
-        fairness_analysis=fairness_analysis,
-        ethical_considerations=ethical_considerations
-    )
-
-    # TODO: Validate model card
     issues = generator.validate_model_card(card)
     if issues:
-        print("Model card validation issues:")
+        print("Validation issues:")
         for issue in issues:
             print(f"  - {issue}")
+        raise SystemExit(1)
 
-    # TODO: Generate and save in multiple formats
-    generator.save_model_card(card, "model_card.md", format="markdown")
-    generator.save_model_card(card, "model_card.html", format="html")
-    generator.save_model_card(card, "model_card.json", format="json")
-
-    print("Model card generated successfully!")
+    generator.save_model_card(card, "model_card.md", fmt="markdown")
+    generator.save_model_card(card, "model_card.html", fmt="html")
+    generator.save_model_card(card, "model_card.json", fmt="json")
+    print("Model card generated in markdown, html, and json.")
 
 
 if __name__ == "__main__":
     main()
 ```
 
+### Validation Tests
+
+```python
+# tests/test_model_card.py
+"""Tests for the model card generator."""
+
+import json
+from datetime import datetime
+
+import pytest
+
+from src.governance.model_card import (
+    EthicalConsiderations,
+    FairnessAnalysis,
+    IntendedUse,
+    ModelCardGenerator,
+    ModelDetails,
+    PerformanceMetrics,
+    TrainingData,
+)
+
+
+@pytest.fixture
+def card():
+    gen = ModelCardGenerator()
+    return gen.create_model_card(
+        model_details=ModelDetails(
+            name="Test Model", version="1.0.0", model_type="Classification",
+            model_architecture="XGBoost", training_date=datetime(2024, 1, 1),
+            developer="ML Team", contact="ml@test.com",
+        ),
+        intended_use=IntendedUse(
+            primary_uses=["Risk scoring"], primary_users=["Analysts"],
+            out_of_scope_uses=["Medical diagnosis"], limitations=["Thin-file degradation"],
+        ),
+        training_data=TrainingData(
+            dataset_name="Test", dataset_size=1000, dataset_description="Synthetic",
+            data_sources=["Internal"], preprocessing=["Scaling"],
+            train_test_split={"train": 0.8, "test": 0.2}, data_collection_period="2024",
+        ),
+        performance_metrics=PerformanceMetrics(overall_metrics={"accuracy": 0.9}),
+        fairness_analysis=FairnessAnalysis(
+            protected_attributes=["gender"], fairness_metrics={"dpd": 0.03},
+            disparate_impact_ratio={"gender": 0.95}, bias_mitigation_applied=["Reweighing"],
+            residual_bias="Negligible.", ongoing_monitoring="Monthly audits.",
+        ),
+        ethical_considerations=EthicalConsiderations(
+            risks=["Disparate impact"], mitigation_strategies=["Human review"],
+            use_cases_to_avoid=["Autonomous denials"], stakeholder_impact={"users": "High"},
+            fairness_tradeoffs="Minor accuracy cost.",
+        ),
+    )
+
+
+def test_valid_card_has_no_issues(card):
+    assert ModelCardGenerator().validate_model_card(card) == []
+
+
+def test_markdown_contains_required_headings(card):
+    md = ModelCardGenerator().generate_markdown(card)
+    for heading in ("# Model Card:", "## Intended Use", "## Fairness Analysis"):
+        assert heading in md
+
+
+def test_json_is_valid_and_roundtrips(card):
+    payload = json.loads(ModelCardGenerator().generate_json(card))
+    assert payload["model_details"]["name"] == "Test Model"
+
+
+def test_validation_flags_missing_limitations(card):
+    card.intended_use.limitations = []
+    issues = ModelCardGenerator().validate_model_card(card)
+    assert any("limitations" in issue for issue in issues)
+
+
+def test_validation_flags_placeholder_text(card):
+    card.fairness_analysis.residual_bias = "TODO: fill in"
+    issues = ModelCardGenerator().validate_model_card(card)
+    assert any("placeholder" in issue for issue in issues)
+
+# Run with: pytest tests/test_model_card.py -v
+```
+
 ### Success Criteria
 
-- [ ] Model card includes all required sections
-- [ ] Markdown generation produces well-formatted output
-- [ ] HTML generation includes styling
-- [ ] JSON export is valid and complete
-- [ ] Validation detects missing fields
-- [ ] Card follows industry best practices
-- [ ] Generated cards are human-readable
+- [ ] `create_model_card` assembles all six required sections
+- [ ] Markdown output includes every section with correct headings
+- [ ] HTML output is valid, standalone, and styled
+- [ ] JSON output is valid and round-trips through `json.loads`
+- [ ] `validate_model_card` flags missing required fields *and* placeholder text
+- [ ] `save_model_card` writes all three formats to disk
+- [ ] All tests pass
 
 ### Solution Hints
 
 <details>
 <summary>Click to reveal hints</summary>
 
-1. **Markdown Generation**: Use f-strings or templates
-2. **HTML Generation**: Convert markdown or use Jinja2 templates
-3. **JSON Serialization**: Use `dataclasses.asdict()` and `json.dumps()`
-4. **Validation**: Check for None values and empty lists
-5. **Follow Standards**: Reference Google's Model Cards paper and examples
+1. **Render from structure**: keep the card a pure function of its dataclasses so it never drifts.
+2. **Markdown tables** need a header separator row (`| --- | --- |`) and the `tables` extension when
+   converting to HTML via `python-markdown`.
+3. **JSON serialization**: `dataclasses.asdict()` handles nesting; pass `default=str` to `json.dumps`
+   so `datetime` fields serialize cleanly.
+4. **Validation as a gate**: run `validate_model_card` in CI and fail the build on any issue — this is
+   what stops half-finished cards from shipping.
+5. **Placeholder detection**: scan free-form fields for `todo`/`tbd`/`fixme` so a card with empty
+   prose is rejected even when the field is technically non-empty.
+6. **Standards**: align section names with the Hugging Face card schema so cards publish cleanly to a
+   model registry or hub.
 
 </details>
 
