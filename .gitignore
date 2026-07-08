@@ -172,3 +172,4 @@ grafana_data/
 checkpoints/
 .cache/
 *.ckpt
+.aicg/
