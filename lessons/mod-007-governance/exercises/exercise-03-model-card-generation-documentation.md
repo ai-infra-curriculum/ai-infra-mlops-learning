@@ -16,7 +16,20 @@ a good card answers:
 - **Is it fair?** Protected attributes, fairness metrics, disparate impact, mitigation.
 - **What could go wrong?** Risks, mitigations, stakeholder impact, fairness trade-offs.
 
-The card is only useful if it is generated from the same metadata your evaluation pipeline already
+The governance frameworks referenced elsewhere in this module all expect this kind of
+documentation, even when they do not name the artifact itself:
+
+- The **EU AI Act** requires technical documentation for high-risk AI systems covering intended
+  purpose, training data, performance, and risk-management measures.
+  <!-- needs-research: exact Article 11 / Annex IV citation once a stable official URL is confirmed -->
+- **NIST AI RMF 1.0** names *transparency and accountability* as trustworthy-AI characteristics and
+  expects documentation to support them across the Govern / Map / Measure / Manage functions.
+- **SR 11-7** (Federal Reserve supervisory guidance on model risk management) requires each
+  banking-regulated model to carry documentation sufficient for an independent reviewer to
+  understand, challenge, and reproduce it.
+
+The card is the practical artifact that satisfies these requirements in one place. It is only
+useful, however, if it is generated from the same metadata your evaluation pipeline already
 produces — a hand-written card drifts immediately. In this exercise you build the generator so the
 card is a deterministic render of structured inputs, and you add validation so an incomplete card
 fails CI rather than shipping with `TODO` sections.
