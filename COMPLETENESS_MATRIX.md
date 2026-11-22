@@ -2,7 +2,7 @@
 
 AI Infrastructure Curriculum · Level 30 · [learning](https://github.com/ai-infra-curriculum/ai-infra-mlops-learning) · [solutions](https://github.com/ai-infra-curriculum/ai-infra-mlops-solutions)
 
-_Generated 2026-11-03 by `aicg org completeness`._
+_Generated 2026-11-22 by `aicg org completeness`._
 
 **Overall: 100%**
 
@@ -21,7 +21,7 @@ _Generated 2026-11-03 by `aicg org completeness`._
 | `mod-004-data-quality` | ✅ Complete | 14,565 | 1 | 5 | ✓ | 5/5 |
 | `mod-005-experimentation` | ✅ Complete | 15,323 | 1 | 5 | ✓ | 5/5 |
 | `mod-006-automation` | ✅ Complete | 15,786 | 1 | 5 | ✓ | 5/5 |
-| `mod-007-governance` | ✅ Complete | 24,735 | 1 | 5 | ✓ | 5/5 |
+| `mod-007-governance` | ✅ Complete | 24,866 | 1 | 5 | ✓ | 5/5 |
 | `mod-008-production-ops` | ✅ Complete | 19,218 | 1 | 5 | ✓ | 5/5 |
 | `mod-009-security` | ✅ Complete | 19,577 | 1 | 5 | ✓ | 5/5 |
 | `mod-010-advanced-topics` | ✅ Complete | 15,657 | 1 | 5 | ✓ | 5/5 |
