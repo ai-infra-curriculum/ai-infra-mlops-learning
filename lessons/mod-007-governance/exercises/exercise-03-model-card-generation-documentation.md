@@ -654,6 +654,35 @@ def test_validation_flags_placeholder_text(card):
     issues = ModelCardGenerator().validate_model_card(card)
     assert any("placeholder" in issue for issue in issues)
 
+
+def test_html_is_standalone_and_includes_card_body(card):
+    html = ModelCardGenerator().generate_html(card)
+    assert html.startswith("<!DOCTYPE html>")
+    assert "<title>Model Card: Test Model</title>" in html
+    assert "<style>" in html
+    assert "<h1>Model Card: Test Model</h1>" in html
+    assert "<table>" in html  # metric tables render via the 'tables' extension
+
+
+def test_save_model_card_writes_all_three_formats(card, tmp_path):
+    gen = ModelCardGenerator()
+    md_path = tmp_path / "card.md"
+    html_path = tmp_path / "card.html"
+    json_path = tmp_path / "card.json"
+
+    gen.save_model_card(card, str(md_path), fmt="markdown")
+    gen.save_model_card(card, str(html_path), fmt="html")
+    gen.save_model_card(card, str(json_path), fmt="json")
+
+    assert md_path.read_text(encoding="utf-8").startswith("# Model Card: Test Model")
+    assert "<!DOCTYPE html>" in html_path.read_text(encoding="utf-8")
+    assert json.loads(json_path.read_text(encoding="utf-8"))["model_details"]["name"] == "Test Model"
+
+
+def test_save_model_card_rejects_unknown_format(card, tmp_path):
+    with pytest.raises(ValueError):
+        ModelCardGenerator().save_model_card(card, str(tmp_path / "x.pdf"), fmt="pdf")
+
 # Run with: pytest tests/test_model_card.py -v
 ```
 
